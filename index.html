@@ -1,397 +1,138 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Hydraulics Remote – BLE</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hydraulics Remote</title>
 <style>
-  :root{
-    --bg:#0b0f14; --panel:#111823; --muted:#6b7a90; --accent:#3da9fc; --ring:#1f2a3a; --text:#e5e7eb; --white:#fff;
-    --green:#22c55e; --green-weak:rgba(34,197,94,.14); --red:#ef4444; --red-weak:rgba(239,68,68,.14);
+  body {
+    font-family: system-ui, sans-serif;
+    background-color: #111;
+    color: #fff;
+    text-align: center;
+    margin: 0;
   }
-  html,body{height:100%}
-  body{margin:0; background:var(--bg); color:var(--text);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;
-    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;}
-  .app{max-width:640px; margin:0 auto; padding:12px; display:flex; flex-direction:column; gap:12px; min-height:100vh; box-sizing:border-box;}
-  .header{display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;}
-  .title{font-weight:700; font-size:clamp(.95rem, 2.4vw, 1.1rem); letter-spacing:.3px;}
-  .status{font-size:clamp(.75rem, 2vw, .85rem); color:var(--muted);}
-  .row{display:flex; align-items:center; gap:8px}
-  .btn{background:#1e293b; color:#e5e7eb; border:1px solid #334155; border-radius:10px; padding:6px 10px; cursor:pointer}
-  .btn:disabled{opacity:.6; cursor:not-allowed}
-  .card{background:var(--panel); border:1px solid var(--ring); border-radius:14px; padding:10px; box-shadow:0 6px 24px rgba(0,0,0,.25);}
-  .fn-grid{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
-  .fn{ position:relative; border:1px solid var(--ring); border-radius:12px; min-height:76px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.06)); cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; transition:transform .06s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease, color .12s ease; text-align:center; padding:8px; }
-  .fn:hover{ transform:translateY(-1px); }
-  .fn:active{ transform:translateY(0); }
-  .fn-name{ font-size:clamp(.86rem, 2.2vw, .98rem); font-weight:700; line-height:1.2; color:#fff; }
-  .fn-timer{ margin-top:4px; font-size:clamp(.7rem, 2vw, .82rem); color:var(--muted); opacity:0; transition:opacity .12s ease; }
-  .fn.selected{ background:var(--accent); color:#0b0f14; border-color:var(--accent); box-shadow:0 0 0 2px rgba(61,169,252,.4) inset, 0 8px 28px rgba(61,169,252,.2); }
-  .fn.selected .fn-name{ color:#0b0f14; }
-  .fn.selected .fn-timer{ opacity:1; color:#05263a; }
-  .action-top{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;}
-  .armed{font-weight:700; letter-spacing:.4px; color:var(--text); font-size:clamp(.9rem,2.6vw,1rem);}
-  .armed.pumping{ color:var(--green); } .armed.dumping{ color:var(--red); }
-  .count{font-variant-numeric:tabular-nums; color:var(--muted); font-size:clamp(.8rem,2.4vw,.95rem);}
-  .slides{display:flex; gap:10px;}
-  .slide{ flex:1; border:1px solid var(--ring); border-radius:12px; padding:10px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); display:flex; flex-direction:column; gap:8px; }
-  .slide .label{ text-align:center; font-weight:700; font-size:clamp(.95rem,2.5vw,1.05rem); color:#fff; }
-  .track{ position:relative; height:56px; border-radius:12px; border:1px solid var(--ring); overflow:hidden; background:rgba(255,255,255,.02); touch-action:none; }
-  .thumb{ position:absolute; top:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:999px; background:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 24px rgba(0,0,0,.25); touch-action:none; }
-  .slide.pump .track{ background:linear-gradient(90deg, rgba(34,197,94,.12), rgba(255,255,255,0)); }
-  .slide.pump.active .track{ box-shadow:0 0 0 2px var(--green-weak) inset; border-color:rgba(34,197,94,.45); }
-  .slide.pump .thumb.active{ outline:2px solid var(--green); }
-  .slide.dump .track{ background:linear-gradient(270deg, rgba(239,68,68,.12), rgba(255,255,255,0)); }
-  .slide.dump.active .track{ box-shadow:0 0 0 2px var(--red-weak) inset; border-color:rgba(239,68,68,.45); }
-  .slide.dump .thumb.active{ outline:2px solid var(--red); }
-  .toggle-wrap{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:10px; padding:10px; border:1px solid var(--ring); border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.06)); transition:background .15s ease, border-color .15s ease, box-shadow .15s ease; }
-  .toggle-wrap.on{ background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.45); box-shadow:0 0 0 2px var(--green-weak) inset; }
-  .toggle-label{ color:var(--text); font-weight:600; font-size:clamp(.95rem,2.6vw,1rem);}
-  .switch{ --h:26px; --w:48px; width:var(--w); height:var(--h); border-radius:999px; border:1px solid var(--ring); background:#0f1722; position:relative; cursor:pointer; transition:background .15s ease, border-color .15s ease, box-shadow .15s ease; }
-  .switch::after{ content:""; position:absolute; top:50%; left:3px; transform:translateY(-50%); width:20px; height:20px; border-radius:999px; background:#d1d5db; transition:transform .18s ease, background .18s ease; box-shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.25) inset; }
-  .switch.on{ background:rgba(34,197,94,.25); border-color:rgba(34,197,94,.5); box-shadow:0 0 0 2px var(--green-weak) inset; }
-  .switch.on::after{ transform:translate(22px, -50%); background:#dcfce7; }
-  .drawer{ position:fixed; left:0; right:0; bottom:0; z-index:30; pointer-events:none; display:flex; justify-content:center; }
-  .drawer-inner{ width:min(640px, 100%); pointer-events:auto; }
-  .drawer-toggle{ width:100%; border:none; background:#0f1420; color:#9fb0d0; padding:8px 10px; cursor:pointer; border-top:1px solid var(--ring); border-left:1px solid var(--ring); border-right:1px solid var(--ring); border-top-left-radius:12px; border-top-right-radius:12px; font-weight:600; }
-  .drawer-body{ display:none; background:#0f1420; border:1px solid var(--ring); border-top:none; border-top-left-radius:0; border-top-right-radius:0; border-bottom-left-radius:12px; border-bottom-right-radius:12px; max-height:45vh; overflow:auto; padding:10px; color:#9fb0d0; font-family:ui-monospace, monospace; font-size:.8rem; line-height:1.35; }
-  .drawer.open .drawer-body{ display:block; }
-  @media (max-width: 430px){ .app{padding:10px; gap:10px} .card{padding:10px} .fn{min-height:72px} .track{height:52px} }
-  @media (max-height: 740px){ .fn{min-height:70px} .track{height:50px} }
+  h1 { margin-top: 1rem; font-size: 1.4rem; }
+  button {
+    background: #222;
+    color: #fff;
+    border: 1px solid #333;
+    border-radius: 0.4rem;
+    margin: 0.3rem;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+  }
+  button:active, button.active { background: #007aff; }
+  #log {
+    background: #000;
+    color: #0f0;
+    font-family: monospace;
+    padding: 0.5rem;
+    height: 240px;
+    overflow-y: auto;
+    text-align: left;
+    border-top: 1px solid #333;
+  }
 </style>
 </head>
 <body>
-  <div class="app">
-    <div class="header">
-      <div class="row">
-        <div class="title" id="title">Hydraulics Remote</div>
-        <button id="bleConnectBtn" class="btn">Connect (Bluetooth)</button>
-      </div>
-      <div class="status"><span id="packets">Packets 0</span> • <span id="rssi">RSSI —</span></div>
-    </div>
 
-    <!-- Haptics prefs + test -->
-    <div class="card" id="prefsCard" style="display:flex; align-items:center; justify-content:space-between; gap:8px">
-      <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
-        <input id="hapticsToggle" type="checkbox" checked style="accent-color:#3da9fc; width:18px; height:18px"/>
-        <span style="font-weight:600">Haptics</span>
-      </label>
-      <div style="display:flex; gap:8px">
-        <button id="testHapticLight" class="btn">Test Light</button>
-        <button id="testHapticMedium" class="btn">Test Medium</button>
-      </div>
-    </div>
+<h1>Hydraulics Remote</h1>
+<button id="connectBtn">Connect (Bluetooth)</button>
+<div id="status">Disconnected</div>
 
-    <!-- Functions -->
-    <div class="card"><div class="fn-grid" id="fnGrid"></div></div>
+<div style="margin-top:1rem;">
+  <button id="testLight">Test Light</button>
+  <button id="testMedium">Test Medium</button>
+</div>
 
-    <!-- ARMED + Sliders + Function Mode -->
-    <div class="card">
-      <div class="action-top">
-        <div id="armedLabel" class="armed">READY</div>
-        <div id="count" class="count">—</div>
-      </div>
+<div style="margin-top:1rem;">
+  <button class="func" data-id="0">Mainsheet</button>
+  <button class="func" data-id="1">Outhaul</button>
+  <button class="func" data-id="2">Backstay</button>
+  <button class="func" data-id="3">Vang</button>
+  <button class="func" data-id="4">Cunningham</button>
+  <button class="func" data-id="5">Furler</button>
+  <button class="func" data-id="6">Jib Halyard</button>
+  <button class="func" data-id="7">Jib Car</button>
+  <button class="func" data-id="8">Inner Forestay</button>
+</div>
 
-      <div class="slides">
-        <div class="slide pump" id="pumpSlide">
-          <div class="label">Slide to Pump →</div>
-          <div class="track" id="pumpTrack" data-dir="right">
-            <div class="thumb" id="pumpThumb" style="left:18%;"></div>
-          </div>
-        </div>
-
-        <div class="slide dump" id="dumpSlide">
-          <div class="label">← Slide to Dump</div>
-          <div class="track" id="dumpTrack" data-dir="left">
-            <div class="thumb" id="dumpThumb" style="left:82%;"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="toggleWrap" class="toggle-wrap" style="margin-top:12px;">
-        <div class="toggle-label">Function Mode</div>
-        <div id="fnSwitch" class="switch" role="switch" aria-checked="false"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Bottom drawer -->
-  <div class="drawer" id="drawer">
-    <div class="drawer-inner">
-      <button class="drawer-toggle" id="drawerToggle">▲ Show Log</button>
-      <div class="drawer-body" id="log"></div>
-    </div>
-  </div>
+<div id="log"></div>
 
 <script>
-  // ======== Haptics ========
-  const HAPTICS_SUPPORTED = 'vibrate' in navigator;
-  let HAPTICS_ENABLED = true;
-  function haptic(type='light'){
-    if(!HAPTICS_SUPPORTED || !HAPTICS_ENABLED) return;
-    const patterns={ light:28, medium:[30,20,40], heavy:[60,30,80] };
-    try{ navigator.vibrate(patterns[type] || 20); }catch(e){}
-  }
+const UUID_SVC  = "0000f00d-0000-1000-8000-00805f9b34fb";
+const UUID_CMD  = "0000f0c1-0000-1000-8000-00805f9b34fb";
+const UUID_EVT  = "0000f0e2-0000-1000-8000-00805f9b34fb";
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+let BLE = { device:null, server:null, svc:null, cmd:null, evt:null, connected:false };
 
-  // ======== BLE (must match RX) ========
-  const SVC_UUID = '0000f00d-0000-1000-8000-00805f9b34fb';
-  const CMD_UUID = '0000f0c1-0000-1000-8000-00805f9b34fb'; // write / writeNR
-  const EVT_UUID = '0000f0e2-0000-1000-8000-00805f9b34fb'; // notify
-  const BLE = { device:null, cmd:null, evt:null, connected:false };
-  const _enc = new TextEncoder();
-  const _dec = new TextDecoder();
+function log(msg){
+  const el = document.getElementById("log");
+  el.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+  el.scrollTop = el.scrollHeight;
+}
 
-  async function bleConnect(forcePicker=false){
-    try{
-      if (!forcePicker && navigator.bluetooth.getDevices){
-        const known = await navigator.bluetooth.getDevices();
-        const dev = known.find(d => d.name?.startsWith('HydraulicsRX'));
-        if (dev){ BLE.device=dev; await dev.gatt.connect(); return await bleInitFromDevice(dev); }
-      }
-      const dev = await navigator.bluetooth.requestDevice({
-        filters:[{ namePrefix:'HydraulicsRX' }],
-        optionalServices:[SVC_UUID]
-      });
-      BLE.device = dev;
-      await dev.gatt.connect();
-      return await bleInitFromDevice(dev);
-    }catch(e){
-      log('BLE connect failed: ' + (e.message||e));
-    }
-  }
+async function connectBLE(){
+  try {
+    log("Requesting BLE device...");
+    BLE.device = await navigator.bluetooth.requestDevice({
+      filters:[{ namePrefix:"HydraulicsRX" }],
+      optionalServices:[UUID_SVC]
+    });
+    BLE.device.addEventListener('gattserverdisconnected', onDisconnect);
+    BLE.server = await BLE.device.gatt.connect();
+    BLE.svc = await BLE.server.getPrimaryService(UUID_SVC);
+    BLE.cmd = await BLE.svc.getCharacteristic(UUID_CMD);
+    BLE.evt = await BLE.svc.getCharacteristic(UUID_EVT);
 
-  async function bleInitFromDevice(device){
-    const svc = await device.gatt.getPrimaryService(SVC_UUID);
-    BLE.cmd = await svc.getCharacteristic(CMD_UUID);
-    BLE.evt = await svc.getCharacteristic(EVT_UUID);
-
-    // Notifications from RX (telemetry)
     await BLE.evt.startNotifications();
-    BLE.evt.addEventListener('characteristicvaluechanged', e=>{
-      const txt = _dec.decode(e.target.value);
-      log('RX: ' + txt);
-      const pkt = /PKT\s+(\d+)/.exec(txt); if (pkt) packetsEl.textContent = `Packets ${pkt[1]}`;
-      const rs  = /RSSI\s+(-?\d+)/.exec(txt); if (rs)  rssiEl.textContent   = `RSSI ${rs[1]}`;
+    BLE.evt.addEventListener('characteristicvaluechanged', evt=>{
+      const val = dec.decode(evt.target.value);
+      log("RX: " + val.trim());
     });
 
     BLE.connected = true;
-    document.getElementById('bleConnectBtn').textContent = 'Connected ✓';
-    device.addEventListener('gattserverdisconnected', ()=>{
-      BLE.connected=false;
-      document.getElementById('bleConnectBtn').textContent = 'Connect (Bluetooth)';
-      log('BLE disconnected');
-    });
-    log('BLE connected to ' + (device.name||'device'));
+    document.getElementById("status").innerText = "Connected ✅";
+    log("BLE connected to HydraulicsRX");
+  } catch(err){
+    log("Connect failed: " + err);
   }
+}
 
-  // Robust write helper (prefer NR; fall back to write)
-  async function bleSend(line){
-    if (!BLE.connected || !BLE.cmd) return;
-    const value = _enc.encode(line + '\n'); // RX splits on newline
-    try{
-      const props = BLE.cmd.properties || {};
-      if (props.writeWithoutResponse) {
-        await BLE.cmd.writeValueWithoutResponse(value);
-      } else if (props.write) {
-        await BLE.cmd.writeValue(value);
-      } else {
-        // some stacks don't expose properties — just try NR then write
-        try { await BLE.cmd.writeValueWithoutResponse(value); }
-        catch { await BLE.cmd.writeValue(value); }
-      }
-    }catch(e){
-      // Last-chance fallback
-      try{ await BLE.cmd.writeValue(value); }
-      catch(err){ log('BLE write failed: ' + (err?.message || err)); }
-    }
+function onDisconnect(){
+  BLE.connected = false;
+  document.getElementById("status").innerText = "Disconnected ❌";
+  log("BLE disconnected");
+}
+
+async function bleSend(line){
+  if(!BLE.connected || !BLE.cmd) return;
+  const data = enc.encode(line + "\n");
+  try{
+    // Always write with response (reliable across Android/iOS)
+    await BLE.cmd.writeValueWithResponse(data);
+    log("TX: " + line);
+  }catch(e){
+    log("Write failed: " + e);
   }
+}
 
-  // ======== App state & DOM ========
-  const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay","Function"];
-  let selectedFunction=-1, action=0, functionModeOn=false;
-  const FUNCTION_ACTIVE_TIME=5000, HEARTBEAT_MS=70;
-  let pageStart=0, packets=0, hbTimer=null, hbAction=0;
+document.getElementById("connectBtn").onclick = connectBLE;
 
-  const fnGrid=document.getElementById('fnGrid');
-  const armedLabel=document.getElementById('armedLabel');
-  const countEl=document.getElementById('count');
-  const fnSwitch=document.getElementById('fnSwitch');
-  const toggleWrap=document.getElementById('toggleWrap');
-  const packetsEl=document.getElementById('packets');
-  const rssiEl=document.getElementById('rssi');
-  const logEl=document.getElementById('log');
-  const drawer=document.getElementById('drawer');
-  const drawerToggle=document.getElementById('drawerToggle');
-  const title=document.getElementById('title');
-  const hapticsToggle=document.getElementById('hapticsToggle');
-  const testHapticLight=document.getElementById('testHapticLight');
-  const testHapticMedium=document.getElementById('testHapticMedium');
+// Test buttons
+document.getElementById("testLight").onclick = ()=>bleSend("S:11,F:1");
+document.getElementById("testMedium").onclick = ()=>bleSend("S:12,F:2");
 
-  // Build grid
-  FUNCTIONS.forEach((name,idx)=>{
-    const card=document.createElement('button');
-    card.type='button'; card.className='fn'; card.dataset.idx=idx; card.setAttribute('aria-pressed','false');
-    card.innerHTML=`<div class="fn-name">${name}</div><div class="fn-timer" data-role="timer">5s</div>`;
-    fnGrid.appendChild(card);
-  });
-
-  function log(msg){ const t=new Date().toLocaleTimeString(); logEl.innerHTML=`[${t}] ${msg}<br>`+logEl.innerHTML; }
-
-  // Local log + counters; BLE write happens via bleSend
-  function logTx(frame){
-    log(`TX: ${frame}`);
-    packets++; packetsEl.textContent = `Packets ${packets}`;
-    rssiEl.textContent = `RSSI —`;
-  }
-
-  const delayMs = (ms)=> new Promise(r=>setTimeout(r,ms));
-
-  // Send a TX-style 2-frame reliability burst for selects
-  async function sendSelectBurst(idx){
-    const f = `S:${idx}`;
-    logTx(f); await bleSend(f);
-    await delayMs(12);
-    logTx(f); await bleSend(f);
-  }
-
-  // Heartbeat management
-  function startHeartbeat(which){
-    stopHeartbeat(); hbAction=which;
-    if(selectedFunction!==-1){
-      const f = `S:${which===1?10:11},F:${selectedFunction}`;
-      logTx(f); bleSend(f);
-    }
-    hbTimer=setInterval(()=>{
-      if(selectedFunction!==-1){
-        const f = `S:${hbAction===1?10:11},F:${selectedFunction}`;
-        logTx(f); bleSend(f);
-      }
-    }, HEARTBEAT_MS);
-  }
-  function stopHeartbeat(){ if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } }
-
-  function renderGrid(){ [...fnGrid.children].forEach((el,i)=>{ const on=i===selectedFunction; el.classList.toggle('selected',on); el.setAttribute('aria-pressed',String(on)); }); }
-  function setAction(newA){ if(action===newA) return; action=newA; renderAction(); }
-  function renderAction(){
-    const armed=(selectedFunction!==-1);
-    armedLabel.textContent=(action===1)?'PUMP':(action===2)?'DUMP':(armed?'ARMED':'READY');
-    armedLabel.classList.toggle('pumping',action===1);
-    armedLabel.classList.toggle('dumping',action===2);
-    document.getElementById('pumpSlide').classList.toggle('active',action===1);
-    document.getElementById('dumpSlide').classList.toggle('active',action===2);
-  }
-
-  // Select / deselect functions
-  fnGrid.addEventListener('click', async (e)=>{
-    const card=e.target.closest('.fn'); if(!card) return;
-    const idx=Number(card.dataset.idx);
-
-    // deselect -> send explicit IDLE with last func
-    if(selectedFunction===idx){
-      const prev=selectedFunction;
-      selectedFunction=-1; action=0; stopHeartbeat(); renderGrid(); renderAction(); updateTimers(true);
-      const f = `S:12,F:${prev}`; logTx(f); bleSend(f);
-      haptic('light'); return;
-    }
-
-    // select -> TX-style 2-frame burst
-    selectedFunction=idx; pageStart=Date.now(); action=0;
-    renderGrid(); renderAction(); updateTimers(false);
-    await sendSelectBurst(idx);
-    haptic('heavy');
-  });
-
-  // Sliders
-  const pumpTrack=document.getElementById('pumpTrack'), pumpThumb=document.getElementById('pumpThumb');
-  const dumpTrack=document.getElementById('dumpTrack'), dumpThumb=document.getElementById('dumpThumb');
-
-  function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
-    let dragging=false, pointerId=null, rect=null, engaged=false;
-    const restingPct= direction==='right'?18:82;
-    const engagePct= direction==='right'?70:30;
-    const pctFromClientX=x=>Math.min(Math.max((x-rect.left)/rect.width,0),1)*100;
-    const updateThumb=p=>thumbEl.style.left=`${p}%`;
-
-    function onPointerDown(e){ dragging=true; pointerId=e.pointerId; rect=trackEl.getBoundingClientRect(); trackEl.setPointerCapture?.(pointerId); }
-    function onPointerMove(e){
-      if(!dragging || e.pointerId!==pointerId) return;
-      const pct=pctFromClientX(e.clientX); updateThumb(pct);
-      const nowEngaged = direction==='right'? (pct>=engagePct) : (pct<=engagePct);
-      if(nowEngaged!==engaged){
-        engaged=nowEngaged;
-        if(engaged){ thumbEl.classList.add('active'); onEngage(); haptic('medium'); }
-        else { thumbEl.classList.remove('active'); onRelease(false); }
-      }
-    }
-    function onPointerUp(e){
-      if(!dragging || e.pointerId!==pointerId) return;
-      dragging=false; try{ trackEl.releasePointerCapture(pointerId);}catch(_){}
-      updateThumb(restingPct); thumbEl.classList.remove('active');
-      onRelease(true); haptic('light');
-    }
-    trackEl.addEventListener('pointerdown', onPointerDown);
-    trackEl.addEventListener('pointermove', onPointerMove);
-    trackEl.addEventListener('pointerup', onPointerUp);
-    thumbEl.addEventListener('pointerdown', onPointerDown);
-  }
-
-  wireSlider(pumpTrack, pumpThumb, 'right',
-    ()=>{ if(selectedFunction!==-1){ if(action!==1){ setAction(1); pageStart=Date.now(); startHeartbeat(1);} } },
-    (finalize)=>{ if(action===1){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ const f=`S:12,F:${selectedFunction}`; logTx(f); bleSend(f);} } }
-  );
-  wireSlider(dumpTrack, dumpThumb, 'left',
-    ()=>{ if(selectedFunction!==-1){ if(action!==2){ setAction(2); pageStart=Date.now(); startHeartbeat(2);} } },
-    (finalize)=>{ if(action===2){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ const f=`S:12,F:${selectedFunction}`; logTx(f); bleSend(f);} } }
-  );
-
-  // Function Mode toggle (id 9 select semantics; burst for reliability)
-  fnSwitch.addEventListener('click', async ()=>{
-    functionModeOn=!functionModeOn;
-    fnSwitch.classList.toggle('on',functionModeOn);
-    fnSwitch.setAttribute('aria-checked', functionModeOn? 'true':'false');
-    toggleWrap.classList.toggle('on',functionModeOn);
-    await sendSelectBurst(9);
-    haptic(functionModeOn? 'medium':'light');
-  });
-
-  // Countdown & per-tile timer
-  function updateTimers(resetToFive){
-    [...fnGrid.children].forEach((el,i)=>{ const t=el.querySelector('[data-role="timer"]'); if(!t) return; if(resetToFive || i!==selectedFunction){ t.textContent='5s'; } });
-  }
-  function renderCountdown(){
-    if(selectedFunction===-1){ countEl.textContent='—'; return; }
-    const elapsed=Date.now()-pageStart; const remainingMs=Math.max(0, FUNCTION_ACTIVE_TIME - elapsed); const secs=Math.ceil(remainingMs/1000);
-    countEl.textContent = `${secs}s`;
-    const card=fnGrid.children[selectedFunction]; if(card){ const t=card.querySelector('[data-role="timer"]'); if(t) t.textContent=`${secs}s`; }
-    if(remainingMs===0){
-      stopHeartbeat(); action=0;
-      const prev=selectedFunction; selectedFunction=-1;
-      renderGrid(); renderAction(); updateTimers(true);
-      const f = `S:12,F:${prev}`; logTx(f); bleSend(f);
-    }
-  }
-
-  // Drawer + haptics UI
-  let drawerOpen=false; const setDrawer=open=>{ drawerOpen=open; drawer.classList.toggle('open',open); drawerToggle.textContent=open? '▼ Hide Log':'▲ Show Log'; };
-  drawerToggle.addEventListener('click',()=> setDrawer(!drawerOpen));
-  let pressTimer=null; title.addEventListener('mousedown',()=>{ pressTimer=setTimeout(()=>setDrawer(!drawerOpen),650); });
-  title.addEventListener('mouseup',()=> clearTimeout(pressTimer)); title.addEventListener('mouseleave',()=> clearTimeout(pressTimer));
-  title.addEventListener('touchstart',()=>{ pressTimer=setTimeout(()=>setDrawer(!drawerOpen),650); }, {passive:true});
-  title.addEventListener('touchend',()=> clearTimeout(pressTimer));
-  if(hapticsToggle){ hapticsToggle.checked = HAPTICS_SUPPORTED; HAPTICS_ENABLED = HAPTICS_SUPPORTED; hapticsToggle.addEventListener('change',()=>{ HAPTICS_ENABLED = hapticsToggle.checked; log(`Haptics ${HAPTICS_ENABLED?'ENABLED':'DISABLED'}`); }); }
-  if(testHapticLight)  testHapticLight.addEventListener('click', ()=> haptic('light'));
-  if(testHapticMedium) testHapticMedium.addEventListener('click', ()=> haptic('medium'));
-
-  // Init
-  (function init(){
-    renderGrid(); renderAction(); setDrawer(false);
-    pumpThumb.style.left='18%'; dumpThumb.style.left='82%';
-    setInterval(renderCountdown, 150);
-  })();
-
-  // Connect button
-  document.getElementById('bleConnectBtn').addEventListener('click', ()=> bleConnect());
+// Function buttons
+for(const b of document.querySelectorAll(".func")){
+  b.onclick = ()=>{
+    const id = b.dataset.id;
+    bleSend("S:" + id);
+  };
+}
 </script>
+
 </body>
 </html>
