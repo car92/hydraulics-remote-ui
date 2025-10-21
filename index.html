@@ -1,138 +1,234 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hydraulics Remote</title>
 <style>
+  :root { --bg:#111; --panel:#1b1b1b; --text:#fff; --muted:#aaa; --btn:#222; --btnb:#333; --blue:#007aff; }
+  * { box-sizing: border-box; }
   body {
-    font-family: system-ui, sans-serif;
-    background-color: #111;
-    color: #fff;
-    text-align: center;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
     margin: 0;
+    text-align: center;
   }
-  h1 { margin-top: 1rem; font-size: 1.4rem; }
+  h1 { margin: 16px 0 8px; font-size: 1.6rem; }
+  #status { margin: 6px 0 14px; color: var(--muted); font-weight: 600; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 10px 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 8px 0; }
   button {
-    background: #222;
-    color: #fff;
-    border: 1px solid #333;
-    border-radius: 0.4rem;
-    margin: 0.3rem;
-    padding: 0.7rem 1rem;
+    background: var(--btn);
+    color: var(--text);
+    border: 1px solid var(--btnb);
+    border-radius: .5rem;
+    padding: .7rem 1rem;
     font-size: 1rem;
+    cursor: pointer;
   }
-  button:active, button.active { background: #007aff; }
+  button:active, button.active { background: var(--blue); border-color: var(--blue); }
+  .pill { border-radius: 9999px; padding: .6rem 1rem; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid #2a2a2a;
+    border-radius: .75rem;
+    padding: 10px;
+    margin: 10px;
+  }
   #log {
     background: #000;
     color: #0f0;
-    font-family: monospace;
-    padding: 0.5rem;
-    height: 240px;
-    overflow-y: auto;
     text-align: left;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 1.25;
+    font-size: .9rem;
+    height: 260px;
+    overflow: auto;
     border-top: 1px solid #333;
+    padding: 8px;
+    white-space: pre-wrap;
   }
+  .small { font-size: .9rem; color: var(--muted); }
 </style>
 </head>
 <body>
+  <div class="wrap">
+    <h1>Hydraulics Remote</h1>
 
-<h1>Hydraulics Remote</h1>
-<button id="connectBtn">Connect (Bluetooth)</button>
-<div id="status">Disconnected</div>
+    <div class="row">
+      <button id="connectBtn" class="pill">Connect (Bluetooth)</button>
+    </div>
+    <div id="status">Disconnected ❌</div>
 
-<div style="margin-top:1rem;">
-  <button id="testLight">Test Light</button>
-  <button id="testMedium">Test Medium</button>
-</div>
+    <div class="panel">
+      <div class="row">
+        <button id="testLight">Test Light (S:10,F:0)</button>
+        <button id="testMedium">Test Medium (S:11,F:0)</button>
+        <button id="idleBtn">Send IDLE (S:12,F:&lt;sel&gt;)</button>
+      </div>
+      <div class="small">Selected function: <span id="selFn">none</span></div>
+    </div>
 
-<div style="margin-top:1rem;">
-  <button class="func" data-id="0">Mainsheet</button>
-  <button class="func" data-id="1">Outhaul</button>
-  <button class="func" data-id="2">Backstay</button>
-  <button class="func" data-id="3">Vang</button>
-  <button class="func" data-id="4">Cunningham</button>
-  <button class="func" data-id="5">Furler</button>
-  <button class="func" data-id="6">Jib Halyard</button>
-  <button class="func" data-id="7">Jib Car</button>
-  <button class="func" data-id="8">Inner Forestay</button>
-</div>
+    <div class="panel">
+      <div class="row" id="fnRow"></div>
+      <div class="row">
+        <button id="pumpBtn">Pump (hold/press)</button>
+        <button id="dumpBtn">Dump (hold/press)</button>
+      </div>
+    </div>
 
-<div id="log"></div>
+    <div id="log" class="panel" aria-live="polite"></div>
+  </div>
 
 <script>
-const UUID_SVC  = "0000f00d-0000-1000-8000-00805f9b34fb";
-const UUID_CMD  = "0000f0c1-0000-1000-8000-00805f9b34fb";
-const UUID_EVT  = "0000f0e2-0000-1000-8000-00805f9b34fb";
+/* ====== BLE UUIDs (must match RX) ====== */
+const UUID_SVC = "0000f00d-0000-1000-8000-00805f9b34fb";
+const UUID_CMD = "0000f0c1-0000-1000-8000-00805f9b34fb";    // WRITE (reliable)
+const UUID_EVT = "0000f0e2-0000-1000-8000-00805f9b34fb";    // NOTIFY
+
+/* ====== UI helpers ====== */
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-let BLE = { device:null, server:null, svc:null, cmd:null, evt:null, connected:false };
-
+const logEl = document.getElementById("log");
+const statusEl = document.getElementById("status");
+const selFnEl = document.getElementById("selFn");
 function log(msg){
-  const el = document.getElementById("log");
-  el.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
-  el.scrollTop = el.scrollHeight;
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
+/* ====== App State ====== */
+const FN_NAMES = ["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay","Function"];
+let selected = -1;
+let hb = null;      // heartbeat interval (for holding pump/dump)
+
+/* ====== BLE state ====== */
+let BLE = { device:null, server:null, svc:null, cmd:null, evt:null, connected:false };
+
+/* ====== Build Function Buttons ====== */
+const fnRow = document.getElementById("fnRow");
+FN_NAMES.slice(0,9).forEach((name, idx)=>{
+  const b = document.createElement("button");
+  b.textContent = name;
+  b.dataset.id = String(idx);
+  b.onclick = () => selectFunction(idx, b);
+  fnRow.appendChild(b);
+});
+
+/* ====== Select function (TX-style double-burst) ====== */
+async function selectFunction(idx, btn){
+  // toggle off -> send IDLE with previous context
+  if (selected === idx){
+    const prev = selected; selected = -1;
+    updateSelectedUI();
+    await sendLine(`S:12,F:${prev}`);      // explicit idle
+    log(`TX: S:12,F:${prev}`);
+    return;
+  }
+  selected = idx;
+  updateSelectedUI();
+
+  // double-burst for reliability
+  await sendLine(`S:${idx}`); log(`TX: S:${idx}`);
+  await delay(12);
+  await sendLine(`S:${idx}`); log(`TX: S:${idx}`);
+}
+
+/* ====== Simple pump/dump/idle buttons ====== */
+const pumpBtn = document.getElementById("pumpBtn");
+const dumpBtn = document.getElementById("dumpBtn");
+const idleBtn = document.getElementById("idleBtn");
+
+pumpBtn.onmousedown = pumpBtn.ontouchstart = async (e)=>{ e.preventDefault(); if(selected<0) return; startHold(10); };
+pumpBtn.onmouseup   = pumpBtn.ontouchend   = async (e)=>{ e.preventDefault(); stopHold(); sendIdleIfSelected(); };
+
+dumpBtn.onmousedown = dumpBtn.ontouchstart = async (e)=>{ e.preventDefault(); if(selected<0) return; startHold(11); };
+dumpBtn.onmouseup   = dumpBtn.ontouchend   = async (e)=>{ e.preventDefault(); stopHold(); sendIdleIfSelected(); };
+
+idleBtn.onclick = sendIdleIfSelected;
+
+function sendIdleIfSelected(){
+  if (selected<0) return;
+  sendLine(`S:12,F:${selected}`); log(`TX: S:12,F:${selected}`);
+}
+
+function startHold(sigId){ // 10 pump / 11 dump
+  stopHold();
+  if (selected<0) return;
+  const frame = `S:${sigId},F:${selected}`;
+  sendLine(frame); log(`TX: ${frame}`);
+  hb = setInterval(()=>{ sendLine(frame); log(`TX: ${frame}`); }, 70);
+}
+function stopHold(){ if (hb){ clearInterval(hb); hb=null; } }
+
+function updateSelectedUI(){
+  selFnEl.textContent = selected >= 0 ? `${selected} – ${FN_NAMES[selected]}` : "none";
+  [...fnRow.children].forEach((btn,i)=> btn.classList.toggle("active", i===selected));
+}
+
+/* ====== Connect ====== */
+document.getElementById("connectBtn").onclick = connectBLE;
+
 async function connectBLE(){
-  try {
+  try{
     log("Requesting BLE device...");
     BLE.device = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:"HydraulicsRX" }],
-      optionalServices:[UUID_SVC]
+      filters: [{ namePrefix: "HydraulicsRX" }],
+      optionalServices: [UUID_SVC],
     });
-    BLE.device.addEventListener('gattserverdisconnected', onDisconnect);
-    BLE.server = await BLE.device.gatt.connect();
-    BLE.svc = await BLE.server.getPrimaryService(UUID_SVC);
-    BLE.cmd = await BLE.svc.getCharacteristic(UUID_CMD);
-    BLE.evt = await BLE.svc.getCharacteristic(UUID_EVT);
+    BLE.device.addEventListener("gattserverdisconnected", onDisconnect);
 
+    BLE.server = await BLE.device.gatt.connect();
+    BLE.svc    = await BLE.server.getPrimaryService(UUID_SVC);
+    BLE.cmd    = await BLE.svc.getCharacteristic(UUID_CMD);
+    BLE.evt    = await BLE.svc.getCharacteristic(UUID_EVT);
+
+    // Notifications (RX telemetry or ECHO lines)
     await BLE.evt.startNotifications();
-    BLE.evt.addEventListener('characteristicvaluechanged', evt=>{
-      const val = dec.decode(evt.target.value);
-      log("RX: " + val.trim());
+    BLE.evt.addEventListener("characteristicvaluechanged", (evt)=>{
+      const bytes = new Uint8Array(evt.target.value.buffer);
+      const text  = dec.decode(bytes);
+
+      // handle multiple lines if RX sends them together
+      text.split(/\r?\n/).forEach(line=>{
+        const t = line.trim();
+        if (t) log("RX: " + t);
+      });
     });
 
     BLE.connected = true;
-    document.getElementById("status").innerText = "Connected ✅";
-    log("BLE connected to HydraulicsRX");
-  } catch(err){
-    log("Connect failed: " + err);
+    statusEl.textContent = "Connected ✅";
+    log("BLE connected to " + (BLE.device.name || "device"));
+  }catch(e){
+    log("Connect failed: " + (e.message || e));
   }
 }
-
 function onDisconnect(){
   BLE.connected = false;
-  document.getElementById("status").innerText = "Disconnected ❌";
+  statusEl.textContent = "Disconnected ❌";
+  stopHold();
   log("BLE disconnected");
 }
 
-async function bleSend(line){
-  if(!BLE.connected || !BLE.cmd) return;
-  const data = enc.encode(line + "\n");
+/* ====== WRITE helper — always WITH RESPONSE ====== */
+async function sendLine(line){
+  if (!BLE.connected || !BLE.cmd) return;
+  const data = enc.encode(line + "\n");    // RX splits on newline
   try{
-    // Always write with response (reliable across Android/iOS)
     await BLE.cmd.writeValueWithResponse(data);
-    log("TX: " + line);
   }catch(e){
-    log("Write failed: " + e);
+    log("WRITE ERR: " + (e.message || e));
   }
 }
 
-document.getElementById("connectBtn").onclick = connectBLE;
+/* ====== Test Buttons ====== */
+document.getElementById("testLight").onclick  = ()=>{ sendLine("S:10,F:0"); log("TX: S:10,F:0"); };
+document.getElementById("testMedium").onclick = ()=>{ sendLine("S:11,F:0"); log("TX: S:11,F:0"); };
 
-// Test buttons
-document.getElementById("testLight").onclick = ()=>bleSend("S:11,F:1");
-document.getElementById("testMedium").onclick = ()=>bleSend("S:12,F:2");
-
-// Function buttons
-for(const b of document.querySelectorAll(".func")){
-  b.onclick = ()=>{
-    const id = b.dataset.id;
-    bleSend("S:" + id);
-  };
-}
+/* ====== utils ====== */
+const delay = (ms)=> new Promise(r=>setTimeout(r,ms));
 </script>
-
 </body>
 </html>
