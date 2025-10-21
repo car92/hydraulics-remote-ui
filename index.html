@@ -136,10 +136,11 @@
 
   // ======== BLE (must match RX) ========
   const SVC_UUID = '0000f00d-0000-1000-8000-00805f9b34fb';
-  const CMD_UUID = '0000f0c1-0000-1000-8000-00805f9b34fb'; // write w/o response
+  const CMD_UUID = '0000f0c1-0000-1000-8000-00805f9b34fb'; // write w/o response preferred
   const EVT_UUID = '0000f0e2-0000-1000-8000-00805f9b34fb'; // notify
   const BLE = { device:null, cmd:null, evt:null, connected:false };
   const _enc = new TextEncoder();
+  const _dec = new TextDecoder();
 
   async function bleConnect(forcePicker=false){
     try{
@@ -156,7 +157,7 @@
       await dev.gatt.connect();
       return await bleInitFromDevice(dev);
     }catch(e){
-      log && log('BLE connect failed: ' + e.message);
+      log('BLE connect failed: ' + (e.message||e));
     }
   }
 
@@ -164,13 +165,16 @@
     const svc = await device.gatt.getPrimaryService(SVC_UUID);
     BLE.cmd = await svc.getCharacteristic(CMD_UUID);
     BLE.evt = await svc.getCharacteristic(EVT_UUID);
+
+    // Notifications from RX (telemetry)
     await BLE.evt.startNotifications();
     BLE.evt.addEventListener('characteristicvaluechanged', e=>{
-      const txt = new TextDecoder().decode(e.target.value);
+      const txt = _dec.decode(e.target.value);
       log('RX: ' + txt);
       const pkt = /PKT\s+(\d+)/.exec(txt); if (pkt) packetsEl.textContent = `Packets ${pkt[1]}`;
       const rs  = /RSSI\s+(-?\d+)/.exec(txt); if (rs)  rssiEl.textContent   = `RSSI ${rs[1]}`;
     });
+
     BLE.connected = true;
     document.getElementById('bleConnectBtn').textContent = 'Connected ✓';
     device.addEventListener('gattserverdisconnected', ()=>{
@@ -179,6 +183,26 @@
       log('BLE disconnected');
     });
     log('BLE connected to ' + (device.name||'device'));
+  }
+
+  // Robust write helper (NR if available, else with response)
+  async function bleSend(line){
+    if (!BLE.connected || !BLE.cmd) return;
+    const value = _enc.encode(line + '\n'); // RX splits on newline
+    try{
+      // Prefer without-response to match characteristic; fall back if not supported.
+      const props = BLE.cmd.properties || {};
+      if (props.writeWithoutResponse) {
+        await BLE.cmd.writeValueWithoutResponse(value);
+      } else {
+        await BLE.cmd.writeValueWithResponse(value);
+      }
+    }catch(e){
+      // Second try with the other method
+      try{
+        await BLE.cmd.writeValueWithResponse(value);
+      }catch(_){}
+    }
   }
 
   // ======== App state & DOM ========
@@ -212,15 +236,40 @@
 
   function log(msg){ const t=new Date().toLocaleTimeString(); logEl.innerHTML=`[${t}] ${msg}<br>`+logEl.innerHTML; }
 
-  // sendFrame -> logs + BLE write (if connected)
-  function sendFrame(frame){
+  // Local log + counters; BLE write happens via bleSend
+  function logTx(frame){
     log(`TX: ${frame}`);
     packets++; packetsEl.textContent = `Packets ${packets}`;
-    rssiEl.textContent = `RSSI -60`;
-    if (BLE.connected && BLE.cmd){
-      BLE.cmd.writeValueWithoutResponse(_enc.encode(frame+'\n')).catch(()=>{});
-    }
+    // we overwrite RSSI in telemetry handler; keep a placeholder here
+    rssiEl.textContent = `RSSI —`;
   }
+
+  // Sleep helper
+  const delayMs = (ms)=> new Promise(r=>setTimeout(r,ms));
+
+  // Send a TX-style 2-frame reliability burst for selects
+  async function sendSelectBurst(idx){
+    const f = `S:${idx}`;
+    logTx(f); await bleSend(f);
+    await delayMs(12);
+    logTx(f); await bleSend(f);
+  }
+
+  // Heartbeat management
+  function startHeartbeat(which){
+    stopHeartbeat(); hbAction=which;
+    if(selectedFunction!==-1){
+      const f = `S:${which===1?10:11},F:${selectedFunction}`;
+      logTx(f); bleSend(f);
+    }
+    hbTimer=setInterval(()=>{
+      if(selectedFunction!==-1){
+        const f = `S:${hbAction===1?10:11},F:${selectedFunction}`;
+        logTx(f); bleSend(f);
+      }
+    }, HEARTBEAT_MS);
+  }
+  function stopHeartbeat(){ if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } }
 
   function renderGrid(){ [...fnGrid.children].forEach((el,i)=>{ const on=i===selectedFunction; el.classList.toggle('selected',on); el.setAttribute('aria-pressed',String(on)); }); }
   function setAction(newA){ if(action===newA) return; action=newA; renderAction(); }
@@ -234,30 +283,28 @@
   }
 
   // Select / deselect functions
-  fnGrid.addEventListener('click',(e)=>{
+  fnGrid.addEventListener('click', async (e)=>{
     const card=e.target.closest('.fn'); if(!card) return;
     const idx=Number(card.dataset.idx);
+
+    // deselect -> send explicit IDLE with last func
     if(selectedFunction===idx){
       const prev=selectedFunction;
       selectedFunction=-1; action=0; stopHeartbeat(); renderGrid(); renderAction(); updateTimers(true);
-      sendFrame(`S:${12},F:${prev}`);
+      const f = `S:12,F:${prev}`; logTx(f); bleSend(f);
       haptic('light'); return;
     }
-    selectedFunction=idx; pageStart=Date.now(); action=0; renderGrid(); renderAction(); updateTimers(false);
-    sendFrame(`S:${idx}`);
+
+    // select -> TX-style 2-frame burst
+    selectedFunction=idx; pageStart=Date.now(); action=0;
+    renderGrid(); renderAction(); updateTimers(false);
+    await sendSelectBurst(idx);
     haptic('heavy');
   });
 
   // Sliders
   const pumpTrack=document.getElementById('pumpTrack'), pumpThumb=document.getElementById('pumpThumb');
   const dumpTrack=document.getElementById('dumpTrack'), dumpThumb=document.getElementById('dumpThumb');
-
-  function startHeartbeat(which){
-    stopHeartbeat(); hbAction=which;
-    if(selectedFunction!==-1){ sendFrame(`S:${which===1?10:11},F:${selectedFunction}`); }
-    hbTimer=setInterval(()=>{ if(selectedFunction!==-1){ sendFrame(`S:${hbAction===1?10:11},F:${selectedFunction}`); } }, HEARTBEAT_MS);
-  }
-  function stopHeartbeat(){ if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } }
 
   function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
     let dragging=false, pointerId=null, rect=null, engaged=false;
@@ -291,20 +338,21 @@
 
   wireSlider(pumpTrack, pumpThumb, 'right',
     ()=>{ if(selectedFunction!==-1){ if(action!==1){ setAction(1); pageStart=Date.now(); startHeartbeat(1);} } },
-    (finalize)=>{ if(action===1){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ sendFrame(`S:12,F:${selectedFunction}`);} } }
+    (finalize)=>{ if(action===1){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ const f=`S:12,F:${selectedFunction}`; logTx(f); bleSend(f);} } }
   );
   wireSlider(dumpTrack, dumpThumb, 'left',
     ()=>{ if(selectedFunction!==-1){ if(action!==2){ setAction(2); pageStart=Date.now(); startHeartbeat(2);} } },
-    (finalize)=>{ if(action===2){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ sendFrame(`S:12,F:${selectedFunction}`);} } }
+    (finalize)=>{ if(action===2){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ const f=`S:12,F:${selectedFunction}`; logTx(f); bleSend(f);} } }
   );
 
-  // Function Mode toggle
-  fnSwitch.addEventListener('click',()=>{
+  // Function Mode toggle (id 9 select semantics; single frame per TX design)
+  fnSwitch.addEventListener('click', async ()=>{
     functionModeOn=!functionModeOn;
     fnSwitch.classList.toggle('on',functionModeOn);
     fnSwitch.setAttribute('aria-checked', functionModeOn? 'true':'false');
     toggleWrap.classList.toggle('on',functionModeOn);
-    sendFrame(`S:9`);
+    // Function button acts like a select page; use burst for reliability too
+    await sendSelectBurst(9);
     haptic(functionModeOn? 'medium':'light');
   });
 
@@ -317,7 +365,12 @@
     const elapsed=Date.now()-pageStart; const remainingMs=Math.max(0, FUNCTION_ACTIVE_TIME - elapsed); const secs=Math.ceil(remainingMs/1000);
     countEl.textContent = `${secs}s`;
     const card=fnGrid.children[selectedFunction]; if(card){ const t=card.querySelector('[data-role="timer"]'); if(t) t.textContent=`${secs}s`; }
-    if(remainingMs===0){ stopHeartbeat(); action=0; const prev=selectedFunction; selectedFunction=-1; renderGrid(); renderAction(); updateTimers(true); sendFrame(`S:12,F:${prev}`); }
+    if(remainingMs===0){
+      stopHeartbeat(); action=0;
+      const prev=selectedFunction; selectedFunction=-1;
+      renderGrid(); renderAction(); updateTimers(true);
+      const f = `S:12,F:${prev}`; logTx(f); bleSend(f);
+    }
   }
 
   // Drawer + haptics UI
