@@ -136,7 +136,7 @@
 
   // ======== BLE (must match RX) ========
   const SVC_UUID = '0000f00d-0000-1000-8000-00805f9b34fb';
-  const CMD_UUID = '0000f0c1-0000-1000-8000-00805f9b34fb'; // write w/o response preferred
+  const CMD_UUID = '0000f0c1-0000-1000-8000-00805f9b34fb'; // write / writeNR
   const EVT_UUID = '0000f0e2-0000-1000-8000-00805f9b34fb'; // notify
   const BLE = { device:null, cmd:null, evt:null, connected:false };
   const _enc = new TextEncoder();
@@ -185,23 +185,25 @@
     log('BLE connected to ' + (device.name||'device'));
   }
 
-  // Robust write helper (NR if available, else with response)
+  // Robust write helper (prefer NR; fall back to write)
   async function bleSend(line){
     if (!BLE.connected || !BLE.cmd) return;
     const value = _enc.encode(line + '\n'); // RX splits on newline
     try{
-      // Prefer without-response to match characteristic; fall back if not supported.
       const props = BLE.cmd.properties || {};
       if (props.writeWithoutResponse) {
         await BLE.cmd.writeValueWithoutResponse(value);
+      } else if (props.write) {
+        await BLE.cmd.writeValue(value);
       } else {
-        await BLE.cmd.writeValueWithResponse(value);
+        // some stacks don't expose properties — just try NR then write
+        try { await BLE.cmd.writeValueWithoutResponse(value); }
+        catch { await BLE.cmd.writeValue(value); }
       }
     }catch(e){
-      // Second try with the other method
-      try{
-        await BLE.cmd.writeValueWithResponse(value);
-      }catch(_){}
+      // Last-chance fallback
+      try{ await BLE.cmd.writeValue(value); }
+      catch(err){ log('BLE write failed: ' + (err?.message || err)); }
     }
   }
 
@@ -240,11 +242,9 @@
   function logTx(frame){
     log(`TX: ${frame}`);
     packets++; packetsEl.textContent = `Packets ${packets}`;
-    // we overwrite RSSI in telemetry handler; keep a placeholder here
     rssiEl.textContent = `RSSI —`;
   }
 
-  // Sleep helper
   const delayMs = (ms)=> new Promise(r=>setTimeout(r,ms));
 
   // Send a TX-style 2-frame reliability burst for selects
@@ -345,13 +345,12 @@
     (finalize)=>{ if(action===2){ stopHeartbeat(); setAction(0); if(finalize && selectedFunction!==-1){ const f=`S:12,F:${selectedFunction}`; logTx(f); bleSend(f);} } }
   );
 
-  // Function Mode toggle (id 9 select semantics; single frame per TX design)
+  // Function Mode toggle (id 9 select semantics; burst for reliability)
   fnSwitch.addEventListener('click', async ()=>{
     functionModeOn=!functionModeOn;
     fnSwitch.classList.toggle('on',functionModeOn);
     fnSwitch.setAttribute('aria-checked', functionModeOn? 'true':'false');
     toggleWrap.classList.toggle('on',functionModeOn);
-    // Function button acts like a select page; use burst for reliability too
     await sendSelectBurst(9);
     haptic(functionModeOn? 'medium':'light');
   });
