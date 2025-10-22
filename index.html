@@ -284,11 +284,21 @@
     try{
       if(BLE.device && BLE.device.gatt.connected){
         log('🔌 Disconnecting BLE...', 'info');
+        
+        // Stop notifications first
+        if(BLE.evt){
+          try{ await BLE.evt.stopNotifications(); }catch(e){}
+        }
+        
+        // Disconnect GATT
         await BLE.device.gatt.disconnect();
+        
+        // Clear all references
         BLE.connected = false;
         BLE.device = null;
         BLE.cmd = null;
         BLE.evt = null;
+        
         bleConnectBtn.style.display = 'block';
         bleDisconnectBtn.style.display = 'none';
         connEl.textContent = 'Disconnected ❌';
