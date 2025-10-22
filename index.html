@@ -204,10 +204,24 @@
       log(`📱 Device selected: ${dev.name || 'Unknown'}`, 'info');
 
       log('🔗 Connecting to GATT server...', 'info');
+      
+      // Check if already connected
+      if(dev.gatt.connected){
+        log('⚠️  Already connected, disconnecting first...', 'warn');
+        dev.gatt.disconnect();
+        await new Promise(r=>setTimeout(r, 1000));
+      }
+      
       const g = await dev.gatt.connect();
+      log(`✅ GATT connected: ${g.connected}`, 'info');
+      
+      if(!g.connected){
+        throw new Error('GATT connect returned but not connected');
+      }
       
       log('🔍 Getting service ' + SVC_UUID, 'info');
       const svc = await g.getPrimaryService(SVC_UUID);
+      log(`✅ Got service`, 'info');
       
       log('🔍 Getting CMD characteristic...', 'info');
       BLE.cmd = await svc.getCharacteristic(CMD_UUID);
@@ -223,9 +237,12 @@
       
       log('🔍 Getting EVT characteristic...', 'info');
       BLE.evt = await svc.getCharacteristic(EVT_UUID);
+      log(`✅ Got EVT characteristic`, 'info');
 
       log('🔔 Starting notifications...', 'info');
       await BLE.evt.startNotifications();
+      log(`✅ Notifications started`, 'info');
+      
       BLE.evt.addEventListener('characteristicvaluechanged', e=>{
         const txt = _dec.decode(e.target.value).trim();
         log('RX: ' + txt, 'rx');
@@ -252,8 +269,14 @@
       });
       
       log('✅ BLE connected successfully!', 'info');
+      
+      // Test write immediately
+      log('🧪 Sending test write...', 'info');
+      await bleSend('S:0');
+      
     }catch(e){
       log('❌ BLE connect failed: ' + (e.message||e), 'err');
+      log('Stack: ' + e.stack, 'err');
     }
   }
 
