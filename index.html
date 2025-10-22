@@ -211,7 +211,15 @@
       
       log('🔍 Getting CMD characteristic...', 'info');
       BLE.cmd = await svc.getCharacteristic(CMD_UUID);
-      log(`✅ CMD char properties: ${[...BLE.cmd.properties].join(', ')}`, 'info');
+      
+      // Log properties safely
+      const props = BLE.cmd.properties;
+      const propsList = [];
+      if(props.write) propsList.push('WRITE');
+      if(props.writeWithoutResponse) propsList.push('WRITE_NR');
+      if(props.read) propsList.push('READ');
+      if(props.notify) propsList.push('NOTIFY');
+      log(`✅ CMD char properties: ${propsList.join(', ')}`, 'info');
       
       log('🔍 Getting EVT characteristic...', 'info');
       BLE.evt = await svc.getCharacteristic(EVT_UUID);
