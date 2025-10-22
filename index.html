@@ -161,7 +161,7 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=50;  // Faster heartbeat (was 70ms) 
+  const HEARTBEAT_MS=40;  // 25Hz heartbeat for hydraulics 
   let pageStart=0; 
   let hbTimer=null; 
   let hbAction=0;
@@ -308,10 +308,17 @@
     const value = _enc.encode(line + '\n');
     log('TX: ' + line, 'tx');
     
+    // Use writeWithoutResponse for lower latency (no ACK wait)
     writeQ = writeQ.then(async ()=>{
       try{
-        await BLE.cmd.writeValueWithResponse(value);
-        await new Promise(r=>setTimeout(r, 25));
+        const props = BLE.cmd.properties;
+        if (props.writeWithoutResponse) {
+          await BLE.cmd.writeValueWithoutResponse(value);
+          // No delay for writeWithoutResponse
+        } else {
+          await BLE.cmd.writeValueWithResponse(value);
+          await new Promise(r=>setTimeout(r, 5));
+        }
       }catch(e){
         log('❌ WRITE ERR: ' + (e.message||e), 'err');
       }
