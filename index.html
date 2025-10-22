@@ -161,7 +161,7 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=70; 
+  const HEARTBEAT_MS=50;  // Faster heartbeat (was 70ms) 
   let pageStart=0; 
   let hbTimer=null; 
   let hbAction=0;
