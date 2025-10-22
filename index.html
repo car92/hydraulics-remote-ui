@@ -89,7 +89,7 @@
   <div class="app">
     <div class="header">
       <div class="title" id="title">Hydraulics Remote</div>
-      <button id="bleConnectBtn" class="btn">Connect BLE</button>
+      <button id="bleConnectBtn" class="btn btn-bluetooth">📶 Connect</button>
       <button id="bleDisconnectBtn" class="btn disconnect" style="display:none;">Disconnect</button>
     </div>
     <div class="status"><span id="packets">Packets 0</span> • <span id="rssi">RSSI —</span> • <span id="conn">Disconnected ❌</span></div>
@@ -431,30 +431,41 @@
 
   function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
     let dragging=false, pointerId=null, rect=null, engaged=false;
-    let hasMoved=false;  // Track if user actually slid
+    let hasMoved=false;
+    let startPct=0;  // Track starting position
     const restingPct= direction==='right'?18:82;
     const engagePct= direction==='right'?70:30;
+    const minMovement=15;  // Must move at least 15% to engage
 
     const pctFromClientX=(x)=>{ const p=Math.min(Math.max((x-rect.left)/rect.width,0),1); return p*100; };
     const updateThumb=(p)=>{ thumbEl.style.left=`${p}%`; };
 
     function onPointerDown(e){ 
       dragging=true; 
-      hasMoved=false;  // Reset on new touch
+      hasMoved=false;
       pointerId=e.pointerId; 
-      rect=trackEl.getBoundingClientRect(); 
+      rect=trackEl.getBoundingClientRect();
+      startPct = pctFromClientX(e.clientX);  // Record start position
       trackEl.setPointerCapture(pointerId); 
     }
     
     function onPointerMove(e){ 
-      if(!dragging || e.pointerId!==pointerId) return; 
-      hasMoved=true;  // User is sliding
-      const pct=pctFromClientX(e.clientX); 
+      if(!dragging || e.pointerId!==pointerId) return;
+      
+      const pct=pctFromClientX(e.clientX);
+      
+      // Check if user has moved enough from start position
+      const movedDistance = Math.abs(pct - startPct);
+      if(movedDistance > minMovement) {
+        hasMoved=true;
+      }
+      
       updateThumb(pct); 
       const nowEngaged = direction==='right'? (pct>=engagePct) : (pct<=engagePct); 
-      if(nowEngaged!==engaged){ 
+      
+      if(nowEngaged!==engaged && hasMoved){ 
         engaged=nowEngaged; 
-        if(engaged && hasMoved){ 
+        if(engaged){ 
           thumbEl.classList.add('active'); 
           onEngage(); 
           haptic('medium'); 
@@ -479,6 +490,7 @@
         onRelease(true); 
       } 
       hasMoved=false;
+      engaged=false;
     }
 
     trackEl.addEventListener('pointerdown', onPointerDown);
