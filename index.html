@@ -161,7 +161,7 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=40;  // 25Hz heartbeat for hydraulics 
+  const HEARTBEAT_MS=30;  // 33Hz heartbeat - very fast 
   let pageStart=0; 
   let hbTimer=null; 
   let hbAction=0;
@@ -316,23 +316,23 @@
     }
     
     const value = _enc.encode(line + '\n');
-    log('TX: ' + line, 'tx');
     
-    // Use writeWithoutResponse for lower latency (no ACK wait)
-    writeQ = writeQ.then(async ()=>{
+    // Fast path: writeWithoutResponse has no delay
+    const props = BLE.cmd.properties;
+    if (props.writeWithoutResponse) {
       try{
-        const props = BLE.cmd.properties;
-        if (props.writeWithoutResponse) {
-          await BLE.cmd.writeValueWithoutResponse(value);
-          // No delay for writeWithoutResponse
-        } else {
-          await BLE.cmd.writeValueWithResponse(value);
-          await new Promise(r=>setTimeout(r, 5));
-        }
+        await BLE.cmd.writeValueWithoutResponse(value);
       }catch(e){
         log('❌ WRITE ERR: ' + (e.message||e), 'err');
       }
-    });
+    } else {
+      // Fallback to writeWithResponse
+      try{
+        await BLE.cmd.writeValueWithResponse(value);
+      }catch(e){
+        log('❌ WRITE ERR: ' + (e.message||e), 'err');
+      }
+    }
   }
 
   // ===== Build function tiles =====
@@ -431,6 +431,7 @@
 
   function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
     let dragging=false, pointerId=null, rect=null, engaged=false;
+    let hasMoved=false;  // Track if user actually slid
     const restingPct= direction==='right'?18:82;
     const engagePct= direction==='right'?70:30;
 
@@ -439,6 +440,7 @@
 
     function onPointerDown(e){ 
       dragging=true; 
+      hasMoved=false;  // Reset on new touch
       pointerId=e.pointerId; 
       rect=trackEl.getBoundingClientRect(); 
       trackEl.setPointerCapture(pointerId); 
@@ -446,12 +448,13 @@
     
     function onPointerMove(e){ 
       if(!dragging || e.pointerId!==pointerId) return; 
+      hasMoved=true;  // User is sliding
       const pct=pctFromClientX(e.clientX); 
       updateThumb(pct); 
       const nowEngaged = direction==='right'? (pct>=engagePct) : (pct<=engagePct); 
       if(nowEngaged!==engaged){ 
         engaged=nowEngaged; 
-        if(engaged){ 
+        if(engaged && hasMoved){ 
           thumbEl.classList.add('active'); 
           onEngage(); 
           haptic('medium'); 
@@ -468,13 +471,14 @@
       try{ trackEl.releasePointerCapture(pointerId); }catch(_){} 
       updateThumb(restingPct); 
       thumbEl.classList.remove('active'); 
-      if(engaged){ 
+      if(engaged && hasMoved){ 
         onRelease(true); 
         engaged=false; 
         haptic('light'); 
       } else { 
         onRelease(true); 
       } 
+      hasMoved=false;
     }
 
     trackEl.addEventListener('pointerdown', onPointerDown);
