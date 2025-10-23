@@ -89,7 +89,7 @@
   <div class="app">
     <div class="header">
       <div class="title" id="title">Hydraulics Remote</div>
-      <button id="bleConnectBtn" class="btn btn-bluetooth">📶 Connect</button>
+      <button id="bleConnectBtn" class="btn">Connect ᛒ</button>
       <button id="bleDisconnectBtn" class="btn disconnect" style="display:none;">Disconnect</button>
     </div>
     <div class="status"><span id="packets">Packets 0</span> • <span id="rssi">RSSI —</span> • <span id="conn">Disconnected ❌</span></div>
@@ -161,7 +161,7 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=30;  // 33Hz heartbeat - very fast 
+  const HEARTBEAT_MS=25;  // 40Hz heartbeat - faster than 50ms timeout 
   let pageStart=0; 
   let hbTimer=null; 
   let hbAction=0;
@@ -337,12 +337,15 @@
 
   // ===== Build function tiles =====
   FUNCTIONS.forEach((name,idx)=>{
+    // Shortened display names for buttons
+    const shortNames = ["MAIN","OUTHAUL","BACKSTAY","VANG","CUNN","FURL","JIB HAL","JIB CAR","INN FORE"];
+    
     const card=document.createElement('button');
     card.type='button'; 
     card.className='fn'; 
     card.dataset.idx=idx; 
     card.setAttribute('aria-pressed','false');
-    card.innerHTML=`<div class="fn-name">${name}</div><div class="fn-timer" data-role="timer">5s</div>`;
+    card.innerHTML=`<div class="fn-name">${shortNames[idx]}</div><div class="fn-timer" data-role="timer">5s</div>`;
     fnGrid.appendChild(card);
   });
 
@@ -371,6 +374,7 @@
       updateTimers(true); 
       await bleSend(`S:12,F:${prev}`); 
       haptic('light'); 
+      log(`⚫ Deselected ${FUNCTIONS[prev]}`, 'info');
       return;
     }
     
@@ -385,6 +389,7 @@
     await new Promise(r=>setTimeout(r,50));
     await bleSend(`S:${selectedFunction}`);
     haptic('heavy');
+    log(`🔵 Selected ${FUNCTIONS[idx]}`, 'info');
   });
 
   // ===== Action rendering =====
@@ -397,8 +402,7 @@
   function renderAction(){ 
     const armed=(selectedFunction!==-1 || functionModeOn); 
     armedLabel.textContent=(action===1)?'PUMP':(action===2)?'DUMP':(armed?'ARMED':'READY'); 
-    armedLabel.classList.toggle('pumping',action===1); 
-    armedLabel.classList.toggle('dumping',action===2); 
+    armedLabel.className = 'armed' + (action===1?' pumping':action===2?' dumping':'');
     document.getElementById('pumpSlide').classList.toggle('active',action===1); 
     document.getElementById('dumpSlide').classList.toggle('active',action===2); 
   }
@@ -430,49 +434,49 @@
   const dumpThumb=document.getElementById('dumpThumb');
 
   function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
-    let dragging=false, pointerId=null, rect=null, engaged=false;
-    let hasMoved=false;
-    let startPct=0;  // Track starting position
-    const restingPct= direction==='right'?18:82;
-    const engagePct= direction==='right'?70:30;
-    const minMovement=15;  // Must move at least 15% to engage
-
-    const pctFromClientX=(x)=>{ const p=Math.min(Math.max((x-rect.left)/rect.width,0),1); return p*100; };
-    const updateThumb=(p)=>{ thumbEl.style.left=`${p}%`; };
-
+    let dragging=false, pointerId=null, rect=null, engaged=false, hasMoved=false;
+    const restingPct=(direction==='right')?18:82; 
+    const engagePct=(direction==='right')?70:30; 
+    const minMovePct=18;
+    
+    const pctFromX=(cx)=>{ 
+      const p=(cx - rect.left)/rect.width; 
+      return Math.min(Math.max(p*100, 0), 100); 
+    };
+    
+    const updateThumb=(pct)=>{ 
+      thumbEl.style.left=`${pct}%`; 
+    };
+    
     function onPointerDown(e){ 
       dragging=true; 
-      hasMoved=false;
+      hasMoved=false; 
+      engaged=false; 
       pointerId=e.pointerId; 
-      rect=trackEl.getBoundingClientRect();
-      startPct = pctFromClientX(e.clientX);  // Record start position
-      trackEl.setPointerCapture(pointerId); 
+      rect=trackEl.getBoundingClientRect(); 
+      try{ trackEl.setPointerCapture(pointerId); }catch(_){} 
     }
     
     function onPointerMove(e){ 
-      if(!dragging || e.pointerId!==pointerId) return;
+      if(!dragging || e.pointerId!==pointerId) return; 
       
-      const pct=pctFromClientX(e.clientX);
-      
-      // Check if user has moved enough from start position
-      const movedDistance = Math.abs(pct - startPct);
-      if(movedDistance > minMovement) {
-        hasMoved=true;
-      }
-      
+      const pct=pctFromX(e.clientX); 
       updateThumb(pct); 
-      const nowEngaged = direction==='right'? (pct>=engagePct) : (pct<=engagePct); 
       
-      if(nowEngaged!==engaged && hasMoved){ 
-        engaged=nowEngaged; 
-        if(engaged){ 
-          thumbEl.classList.add('active'); 
-          onEngage(); 
-          haptic('medium'); 
-        } else { 
-          thumbEl.classList.remove('active'); 
-          onRelease(false); 
-        } 
+      const dist=(direction==='right')? (pct - restingPct) : (restingPct - pct); 
+      if(dist >= minMovePct){ 
+        hasMoved=true; 
+      } 
+      
+      const cond=(direction==='right' && pct>=engagePct)||(direction==='left' && pct<=engagePct); 
+      if(cond && hasMoved && !engaged){ 
+        engaged=true; 
+        thumbEl.classList.add('active'); 
+        onEngage(); 
+        haptic('medium'); 
+      } else { 
+        thumbEl.classList.remove('active'); 
+        onRelease(false); 
       } 
     }
     
