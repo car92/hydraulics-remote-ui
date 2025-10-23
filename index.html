@@ -469,15 +469,20 @@
       } 
       
       const cond=(direction==='right' && pct>=engagePct)||(direction==='left' && pct<=engagePct); 
+      
+      // FIXED: Only call callbacks when state actually changes
       if(cond && hasMoved && !engaged){ 
         engaged=true; 
         thumbEl.classList.add('active'); 
         onEngage(); 
         haptic('medium'); 
-      } else { 
+      } else if(!cond && engaged){
+        // Disengaged - slider moved back out of zone
+        engaged=false; 
         thumbEl.classList.remove('active'); 
         onRelease(false); 
-      } 
+      }
+      // If still engaged (cond && engaged), do nothing - keep heartbeat running
     }
     
     function onPointerUp(e){ 
