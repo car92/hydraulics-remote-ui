@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Hydraulics Remote – BLE</title>
+<title>Hydraulics Remote – BLE (FIXED HOLD)</title>
 <style>
   :root{
     --bg:#0b0f14; --panel:#111823; --muted:#6b7a90; --accent:#3da9fc; --ring:#1f2a3a; --text:#e5e7eb; --white:#fff;
@@ -155,16 +155,14 @@
   const BLE = { device:null, cmd:null, evt:null, connected:false };
   const _enc = new TextEncoder();
   const _dec = new TextDecoder();
-  let writeQ = Promise.resolve();
 
   // ===== State =====
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=25;  // 40Hz heartbeat - faster than 50ms timeout 
+  const HEARTBEAT_MS=25;  // 40Hz heartbeat
   let pageStart=0; 
   let hbTimer=null; 
-  let hbAction=0;
 
   // ===== DOM =====
   const fnGrid=document.getElementById('fnGrid');
@@ -205,7 +203,6 @@
 
       log('🔗 Connecting to GATT server...', 'info');
       
-      // Check if already connected
       if(dev.gatt.connected){
         log('⚠️  Already connected, disconnecting first...', 'warn');
         dev.gatt.disconnect();
@@ -226,7 +223,6 @@
       log('🔍 Getting CMD characteristic...', 'info');
       BLE.cmd = await svc.getCharacteristic(CMD_UUID);
       
-      // Log properties safely
       const props = BLE.cmd.properties;
       const propsList = [];
       if(props.write) propsList.push('WRITE');
@@ -269,14 +265,10 @@
       });
       
       log('✅ BLE connected successfully!', 'info');
-      
-      // Test write immediately
-      log('🧪 Sending test write...', 'info');
       await bleSend('S:0');
       
     }catch(e){
       log('❌ BLE connect failed: ' + (e.message||e), 'err');
-      log('Stack: ' + e.stack, 'err');
     }
   }
 
@@ -285,15 +277,12 @@
       if(BLE.device && BLE.device.gatt.connected){
         log('🔌 Disconnecting BLE...', 'info');
         
-        // Stop notifications first
         if(BLE.evt){
           try{ await BLE.evt.stopNotifications(); }catch(e){}
         }
         
-        // Disconnect GATT
         await BLE.device.gatt.disconnect();
         
-        // Clear all references
         BLE.connected = false;
         BLE.device = null;
         BLE.cmd = null;
@@ -317,18 +306,18 @@
     
     const value = _enc.encode(line + '\n');
     
-    // Fast path: writeWithoutResponse has no delay
     const props = BLE.cmd.properties;
     if (props.writeWithoutResponse) {
       try{
         await BLE.cmd.writeValueWithoutResponse(value);
+        log('TX: ' + line, 'tx');
       }catch(e){
         log('❌ WRITE ERR: ' + (e.message||e), 'err');
       }
     } else {
-      // Fallback to writeWithResponse
       try{
         await BLE.cmd.writeValueWithResponse(value);
+        log('TX: ' + line, 'tx');
       }catch(e){
         log('❌ WRITE ERR: ' + (e.message||e), 'err');
       }
@@ -337,7 +326,6 @@
 
   // ===== Build function tiles =====
   FUNCTIONS.forEach((name,idx)=>{
-    // Shortened display names for buttons
     const shortNames = ["MAIN","OUTHAUL","BACKSTAY","VANG","CUNN","FURL","JIB HAL","JIB CAR","INN FORE"];
     
     const card=document.createElement('button');
@@ -364,7 +352,6 @@
     const idx=Number(card.dataset.idx);
     
     if(selectedFunction===idx){ 
-      // Deselect
       stopHeartbeat(); 
       action=0; 
       const prev=selectedFunction;
@@ -378,7 +365,6 @@
       return;
     }
     
-    // Select new
     selectedFunction=idx; 
     pageStart=Date.now(); 
     action=0; 
@@ -407,23 +393,38 @@
     document.getElementById('dumpSlide').classList.toggle('active',action===2); 
   }
 
-  // ===== Heartbeat for pump/dump =====
+  // ===== FIXED Heartbeat for pump/dump =====
   function startHeartbeat(which){ 
     stopHeartbeat(); 
-    hbAction=which; 
     const funcId = functionModeOn ? 9 : selectedFunction;
-    if(funcId !== -1){ 
-      bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
-      hbTimer=setInterval(()=>{ 
-        bleSend(`S:${hbAction===1?'10':'11'},F:${funcId}`);
-      }, HEARTBEAT_MS); 
+    if(funcId === -1){
+      log('⚠️  Cannot start heartbeat: no function selected', 'warn');
+      return;
     }
+    
+    log(`🟢 Starting heartbeat: ${which===1?'PUMP':'DUMP'}`, 'info');
+    
+    // Send initial command
+    bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
+    
+    // Start interval
+    hbTimer=setInterval(()=>{ 
+      if(BLE.connected){
+        bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
+      } else {
+        log('⚠️  Heartbeat stopped: BLE disconnected', 'warn');
+        stopHeartbeat();
+      }
+    }, HEARTBEAT_MS); 
+    
+    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz`, 'info');
   }
   
   function stopHeartbeat(){ 
     if(hbTimer){ 
       clearInterval(hbTimer); 
       hbTimer=null; 
+      log('🛑 Heartbeat stopped', 'info');
     } 
   }
 
@@ -449,6 +450,7 @@
     };
     
     function onPointerDown(e){ 
+      log(`👇 Pointer down on ${direction} slider`, 'info');
       dragging=true; 
       hasMoved=false; 
       engaged=false; 
@@ -470,34 +472,39 @@
       
       const cond=(direction==='right' && pct>=engagePct)||(direction==='left' && pct<=engagePct); 
       
-      // FIXED: Only call callbacks when state actually changes
+      // Engage when entering zone
       if(cond && hasMoved && !engaged){ 
         engaged=true; 
         thumbEl.classList.add('active'); 
+        log(`✅ ENGAGED ${direction} slider`, 'info');
         onEngage(); 
         haptic('medium'); 
-      } else if(!cond && engaged){
-        // Disengaged - slider moved back out of zone
+      } 
+      // Disengage when leaving zone while dragging
+      else if(!cond && engaged){
         engaged=false; 
         thumbEl.classList.remove('active'); 
+        log(`⬅️  DISENGAGED ${direction} slider (moved out)`, 'info');
         onRelease(false); 
       }
-      // If still engaged (cond && engaged), do nothing - keep heartbeat running
     }
     
     function onPointerUp(e){ 
       if(!dragging || e.pointerId!==pointerId) return; 
+      
+      log(`👆 Pointer up on ${direction} slider - engaged=${engaged}`, 'info');
+      
       dragging=false; 
       try{ trackEl.releasePointerCapture(pointerId); }catch(_){} 
       updateThumb(restingPct); 
       thumbEl.classList.remove('active'); 
-      if(engaged && hasMoved){ 
+      
+      if(engaged){ 
         onRelease(true); 
         engaged=false; 
         haptic('light'); 
-      } else { 
-        onRelease(true); 
-      } 
+      }
+      
       hasMoved=false;
       engaged=false;
     }
@@ -505,6 +512,7 @@
     trackEl.addEventListener('pointerdown', onPointerDown);
     trackEl.addEventListener('pointermove', onPointerMove);
     trackEl.addEventListener('pointerup', onPointerUp);
+    trackEl.addEventListener('pointercancel', onPointerUp);
     thumbEl.addEventListener('pointerdown', onPointerDown);
   }
 
@@ -512,11 +520,11 @@
   wireSlider(pumpTrack, pumpThumb, 'right',
     ()=>{ 
       if(selectedFunction!==-1 || functionModeOn){ 
-        if(action!==1){ 
-          setAction(1); 
-          pageStart=Date.now(); 
-          startHeartbeat(1);
-        }
+        setAction(1); 
+        pageStart=Date.now(); 
+        startHeartbeat(1);
+      } else {
+        log('⚠️  Select a function first!', 'warn');
       }
     },
     (finalize)=>{ 
@@ -535,11 +543,11 @@
   wireSlider(dumpTrack, dumpThumb, 'left',
     ()=>{ 
       if(selectedFunction!==-1 || functionModeOn){ 
-        if(action!==2){ 
-          setAction(2); 
-          pageStart=Date.now(); 
-          startHeartbeat(2);
-        }
+        setAction(2); 
+        pageStart=Date.now(); 
+        startHeartbeat(2);
+      } else {
+        log('⚠️  Select a function first!', 'warn');
       }
     },
     (finalize)=>{ 
@@ -615,7 +623,7 @@
     } 
   }
 
-  // ===== Drawer toggle + hidden dev gesture =====
+  // ===== Drawer toggle =====
   let drawerOpen=false; 
   const setDrawer=(open)=>{ 
     drawerOpen=open; 
@@ -635,15 +643,15 @@
   (function init(){ 
     renderGrid(); 
     renderAction(); 
-    setDrawer(false); 
+    setDrawer(true); // Open by default to see logs
     pumpThumb.style.left='18%'; 
     dumpThumb.style.left='82%'; 
     setInterval(renderCountdown, 150);
     
     log('🚀 Web app initialized', 'info');
     log('⚡ Tap title for 650ms to toggle log', 'info');
+    log('📝 Watch this log to see heartbeat activity', 'info');
     
-    // Connect/Disconnect buttons
     bleConnectBtn.addEventListener('click', bleConnect);
     bleDisconnectBtn.addEventListener('click', bleDisconnect);
   })();
