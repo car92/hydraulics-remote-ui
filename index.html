@@ -160,7 +160,7 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=50;  // 20Hz heartbeat - slower to avoid GATT overlap
+  const HEARTBEAT_MS=30;  // 33Hz heartbeat - fast enough to avoid 100ms receiver timeout
   let pageStart=0; 
   let hbTimer=null; 
 
@@ -484,13 +484,7 @@
         onEngage(); 
         haptic('medium'); 
       } 
-      // Disengage when leaving zone while dragging
-      else if(!cond && engaged){
-        engaged=false; 
-        thumbEl.classList.remove('active'); 
-        log(`⬅️  DISENGAGED ${direction} slider (moved out)`, 'info');
-        onRelease(false); 
-      }
+      // REMOVED: Mid-drag disengagement to prevent toggling
     }
     
     function onPointerUp(e){ 
