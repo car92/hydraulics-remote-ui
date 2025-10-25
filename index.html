@@ -46,7 +46,7 @@
 
   /* BUTTONS instead of sliders */
   .action-buttons{display:flex; gap:10px; margin-top:8px;}
-  .action-btn{flex:1; min-height:80px; border:2px solid var(--ring); border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.2rem; transition:all .15s ease; touch-action:none;}
+  .action-btn{flex:1; min-height:80px; border:2px solid var(--ring); border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.2rem; transition:all .15s ease; -webkit-tap-highlight-color:transparent;}
   .action-btn:active{transform:scale(0.97);}
   .action-btn.pump{color:#22c55e; border-color:rgba(34,197,94,.3);}
   .action-btn.pump.active{background:rgba(34,197,94,.25); border-color:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.2) inset;}
@@ -413,17 +413,17 @@
     } 
   }
 
-  // ===== BUTTON HANDLERS (Simple pointerdown/pointerup) =====
+  // ===== BUTTON HANDLERS (Using touch events for mobile) =====
   
   let pumpPressed = false;
   let dumpPressed = false;
   
-  // PUMP Button
-  pumpBtn.addEventListener('pointerdown', (e)=>{
+  // PUMP Button - Use touchstart/touchend for better mobile support
+  pumpBtn.addEventListener('touchstart', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     pumpPressed = true;
-    log('👇 PUMP button DOWN (pressed=' + pumpPressed + ')', 'info');
+    log('👇 PUMP touchstart (pressed=' + pumpPressed + ')', 'info');
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(1); 
       pageStart=Date.now(); 
@@ -432,17 +432,17 @@
     } else {
       log('⚠️  Select a function first!', 'warn');
     }
-  });
+  }, {passive: false});
   
-  pumpBtn.addEventListener('pointerup', (e)=>{
+  pumpBtn.addEventListener('touchend', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     if(!pumpPressed) {
-      log('⚠️  PUMP UP without DOWN - ignoring', 'warn');
+      log('⚠️  PUMP touchend without touchstart - ignoring', 'warn');
       return;
     }
     pumpPressed = false;
-    log('👆 PUMP button UP (pressed=' + pumpPressed + ')', 'info');
+    log('👆 PUMP touchend (pressed=' + pumpPressed + ')', 'info');
     if(action===1){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -450,23 +450,23 @@
       if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
       haptic('light');
     }
-  });
+  }, {passive: false});
   
-  pumpBtn.addEventListener('pointercancel', (e)=>{
-    log('❌ PUMP button CANCEL', 'warn');
+  pumpBtn.addEventListener('touchcancel', (e)=>{
+    log('❌ PUMP touchcancel', 'warn');
     pumpPressed = false;
     if(action===1){ 
       stopHeartbeat(); 
       setAction(0); 
     }
-  });
+  }, {passive: false});
 
-  // DUMP Button
-  dumpBtn.addEventListener('pointerdown', (e)=>{
+  // DUMP Button - Use touchstart/touchend
+  dumpBtn.addEventListener('touchstart', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     dumpPressed = true;
-    log('👇 DUMP button DOWN (pressed=' + dumpPressed + ')', 'info');
+    log('👇 DUMP touchstart (pressed=' + dumpPressed + ')', 'info');
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(2); 
       pageStart=Date.now(); 
@@ -475,17 +475,17 @@
     } else {
       log('⚠️  Select a function first!', 'warn');
     }
-  });
+  }, {passive: false});
   
-  dumpBtn.addEventListener('pointerup', (e)=>{
+  dumpBtn.addEventListener('touchend', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     if(!dumpPressed) {
-      log('⚠️  DUMP UP without DOWN - ignoring', 'warn');
+      log('⚠️  DUMP touchend without touchstart - ignoring', 'warn');
       return;
     }
     dumpPressed = false;
-    log('👆 DUMP button UP (pressed=' + dumpPressed + ')', 'info');
+    log('👆 DUMP touchend (pressed=' + dumpPressed + ')', 'info');
     if(action===2){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -493,16 +493,16 @@
       if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
       haptic('light');
     }
-  });
+  }, {passive: false});
   
-  dumpBtn.addEventListener('pointercancel', (e)=>{
-    log('❌ DUMP button CANCEL', 'warn');
+  dumpBtn.addEventListener('touchcancel', (e)=>{
+    log('❌ DUMP touchcancel', 'warn');
     dumpPressed = false;
     if(action===2){ 
       stopHeartbeat(); 
       setAction(0); 
     }
-  });
+  }, {passive: false});
 
   // ===== Function Mode toggle =====
   fnSwitch.addEventListener('click', async ()=>{ 
