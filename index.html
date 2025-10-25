@@ -431,20 +431,76 @@
     } 
   }
 
-  // ===== BUTTON HANDLERS (Using touch events for mobile) =====
+  // ===== BUTTON HANDLERS (Dead man's switch - needs continuous touch) =====
   
   let pumpPressed = false;
   let dumpPressed = false;
   let pumpTouchId = null;
   let dumpTouchId = null;
+  let pumpWatchdog = null;
+  let dumpWatchdog = null;
   
-  // PUMP Button - Use touchstart/touchend for better mobile support
+  const TOUCH_WATCHDOG_MS = 150; // If no touchmove for 150ms, release
+  
+  function stopPumpWatchdog(){
+    if(pumpWatchdog){
+      clearTimeout(pumpWatchdog);
+      pumpWatchdog = null;
+    }
+  }
+  
+  function stopDumpWatchdog(){
+    if(dumpWatchdog){
+      clearTimeout(dumpWatchdog);
+      dumpWatchdog = null;
+    }
+  }
+  
+  function pumpRelease(){
+    if(!pumpPressed) return;
+    pumpPressed = false;
+    pumpTouchId = null;
+    stopPumpWatchdog();
+    log('👆 PUMP RELEASE', 'info');
+    if(action===1){ 
+      stopHeartbeat(); 
+      setAction(0); 
+      const funcId = functionModeOn ? 9 : selectedFunction;
+      if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
+      haptic('light');
+    }
+  }
+  
+  function dumpRelease(){
+    if(!dumpPressed) return;
+    dumpPressed = false;
+    dumpTouchId = null;
+    stopDumpWatchdog();
+    log('👆 DUMP RELEASE', 'info');
+    if(action===2){ 
+      stopHeartbeat(); 
+      setAction(0); 
+      const funcId = functionModeOn ? 9 : selectedFunction;
+      if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
+      haptic('light');
+    }
+  }
+  
+  // PUMP Button - Dead man's switch approach
   pumpBtn.addEventListener('touchstart', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     pumpPressed = true;
     pumpTouchId = e.changedTouches[0].identifier;
-    log('👇 PUMP touchstart (pressed=' + pumpPressed + ', id=' + pumpTouchId + ')', 'info');
+    log('👇 PUMP touchstart (id=' + pumpTouchId + ')', 'info');
+    
+    // Start watchdog
+    stopPumpWatchdog();
+    pumpWatchdog = setTimeout(()=>{
+      log('⏱️  PUMP watchdog timeout - no touchmove', 'warn');
+      pumpRelease();
+    }, TOUCH_WATCHDOG_MS);
+    
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(1); 
       pageStart=Date.now(); 
@@ -456,54 +512,47 @@
   }, {passive: false});
   
   pumpBtn.addEventListener('touchmove', (e)=>{
-    e.preventDefault(); // Prevent scrolling while holding
+    e.preventDefault();
     e.stopPropagation();
-    if(pumpPressed){
-      log('👉 PUMP touchmove (still holding, id=' + e.changedTouches[0].identifier + ')', 'info');
-    }
+    if(!pumpPressed) return;
+    
+    // Reset watchdog - we got movement, finger is still down!
+    stopPumpWatchdog();
+    pumpWatchdog = setTimeout(()=>{
+      log('⏱️  PUMP watchdog timeout - movement stopped', 'warn');
+      pumpRelease();
+    }, TOUCH_WATCHDOG_MS);
   }, {passive: false});
   
   pumpBtn.addEventListener('touchend', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     const touchId = e.changedTouches[0].identifier;
-    if(!pumpPressed) {
-      log('⚠️  PUMP touchend without touchstart - ignoring (id=' + touchId + ')', 'warn');
-      return;
-    }
-    if(touchId !== pumpTouchId){
-      log('⚠️  PUMP touchend with wrong ID (expected=' + pumpTouchId + ', got=' + touchId + ')', 'warn');
-      return;
-    }
-    pumpPressed = false;
-    pumpTouchId = null;
-    log('👆 PUMP touchend (pressed=' + pumpPressed + ', id=' + touchId + ')', 'info');
-    if(action===1){ 
-      stopHeartbeat(); 
-      setAction(0); 
-      const funcId = functionModeOn ? 9 : selectedFunction;
-      if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
-      haptic('light');
-    }
+    log('ℹ️  PUMP touchend (id=' + touchId + ') - ignoring, using watchdog instead', 'info');
+    // DON'T release here - touchend is buggy on mobile!
+    // Let the watchdog handle it (no more touchmove = release)
   }, {passive: false});
   
   pumpBtn.addEventListener('touchcancel', (e)=>{
-    log('❌ PUMP touchcancel (id=' + e.changedTouches[0].identifier + ')', 'warn');
-    pumpPressed = false;
-    pumpTouchId = null;
-    if(action===1){ 
-      stopHeartbeat(); 
-      setAction(0); 
-    }
+    log('❌ PUMP touchcancel', 'warn');
+    pumpRelease();
   }, {passive: false});
 
-  // DUMP Button - Use touchstart/touchend
+  // DUMP Button - Dead man's switch approach
   dumpBtn.addEventListener('touchstart', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     dumpPressed = true;
     dumpTouchId = e.changedTouches[0].identifier;
-    log('👇 DUMP touchstart (pressed=' + dumpPressed + ', id=' + dumpTouchId + ')', 'info');
+    log('👇 DUMP touchstart (id=' + dumpTouchId + ')', 'info');
+    
+    // Start watchdog
+    stopDumpWatchdog();
+    dumpWatchdog = setTimeout(()=>{
+      log('⏱️  DUMP watchdog timeout - no touchmove', 'warn');
+      dumpRelease();
+    }, TOUCH_WATCHDOG_MS);
+    
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(2); 
       pageStart=Date.now(); 
@@ -515,45 +564,29 @@
   }, {passive: false});
   
   dumpBtn.addEventListener('touchmove', (e)=>{
-    e.preventDefault(); // Prevent scrolling while holding
+    e.preventDefault();
     e.stopPropagation();
-    if(dumpPressed){
-      log('👉 DUMP touchmove (still holding, id=' + e.changedTouches[0].identifier + ')', 'info');
-    }
+    if(!dumpPressed) return;
+    
+    // Reset watchdog - we got movement, finger is still down!
+    stopDumpWatchdog();
+    dumpWatchdog = setTimeout(()=>{
+      log('⏱️  DUMP watchdog timeout - movement stopped', 'warn');
+      dumpRelease();
+    }, TOUCH_WATCHDOG_MS);
   }, {passive: false});
   
   dumpBtn.addEventListener('touchend', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     const touchId = e.changedTouches[0].identifier;
-    if(!dumpPressed) {
-      log('⚠️  DUMP touchend without touchstart - ignoring (id=' + touchId + ')', 'warn');
-      return;
-    }
-    if(touchId !== dumpTouchId){
-      log('⚠️  DUMP touchend with wrong ID (expected=' + dumpTouchId + ', got=' + touchId + ')', 'warn');
-      return;
-    }
-    dumpPressed = false;
-    dumpTouchId = null;
-    log('👆 DUMP touchend (pressed=' + dumpPressed + ', id=' + touchId + ')', 'info');
-    if(action===2){ 
-      stopHeartbeat(); 
-      setAction(0); 
-      const funcId = functionModeOn ? 9 : selectedFunction;
-      if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
-      haptic('light');
-    }
+    log('ℹ️  DUMP touchend (id=' + touchId + ') - ignoring, using watchdog instead', 'info');
+    // DON'T release here - touchend is buggy on mobile!
   }, {passive: false});
   
   dumpBtn.addEventListener('touchcancel', (e)=>{
-    log('❌ DUMP touchcancel (id=' + e.changedTouches[0].identifier + ')', 'warn');
-    dumpPressed = false;
-    dumpTouchId = null;
-    if(action===2){ 
-      stopHeartbeat(); 
-      setAction(0); 
-    }
+    log('❌ DUMP touchcancel', 'warn');
+    dumpRelease();
   }, {passive: false});
 
   // ===== Function Mode toggle =====
