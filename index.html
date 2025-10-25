@@ -46,7 +46,25 @@
 
   /* BUTTONS instead of sliders */
   .action-buttons{display:flex; gap:10px; margin-top:8px;}
-  .action-btn{flex:1; min-height:80px; border:2px solid var(--ring); border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.2rem; transition:all .15s ease; -webkit-tap-highlight-color:transparent;}
+  .action-btn{
+    flex:1; 
+    min-height:80px; 
+    border:2px solid var(--ring); 
+    border-radius:12px; 
+    background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); 
+    cursor:pointer; 
+    user-select:none; 
+    display:flex; 
+    align-items:center; 
+    justify-content:center; 
+    font-weight:700; 
+    font-size:1.2rem; 
+    transition:all .15s ease; 
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation; /* Prevent browser gestures but allow tap */
+    -webkit-user-select:none;
+    -webkit-touch-callout:none;
+  }
   .action-btn:active{transform:scale(0.97);}
   .action-btn.pump{color:#22c55e; border-color:rgba(34,197,94,.3);}
   .action-btn.pump.active{background:rgba(34,197,94,.25); border-color:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.2) inset;}
@@ -417,13 +435,16 @@
   
   let pumpPressed = false;
   let dumpPressed = false;
+  let pumpTouchId = null;
+  let dumpTouchId = null;
   
   // PUMP Button - Use touchstart/touchend for better mobile support
   pumpBtn.addEventListener('touchstart', (e)=>{
     e.preventDefault();
     e.stopPropagation();
     pumpPressed = true;
-    log('👇 PUMP touchstart (pressed=' + pumpPressed + ')', 'info');
+    pumpTouchId = e.changedTouches[0].identifier;
+    log('👇 PUMP touchstart (pressed=' + pumpPressed + ', id=' + pumpTouchId + ')', 'info');
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(1); 
       pageStart=Date.now(); 
@@ -434,15 +455,29 @@
     }
   }, {passive: false});
   
+  pumpBtn.addEventListener('touchmove', (e)=>{
+    e.preventDefault(); // Prevent scrolling while holding
+    e.stopPropagation();
+    if(pumpPressed){
+      log('👉 PUMP touchmove (still holding, id=' + e.changedTouches[0].identifier + ')', 'info');
+    }
+  }, {passive: false});
+  
   pumpBtn.addEventListener('touchend', (e)=>{
     e.preventDefault();
     e.stopPropagation();
+    const touchId = e.changedTouches[0].identifier;
     if(!pumpPressed) {
-      log('⚠️  PUMP touchend without touchstart - ignoring', 'warn');
+      log('⚠️  PUMP touchend without touchstart - ignoring (id=' + touchId + ')', 'warn');
+      return;
+    }
+    if(touchId !== pumpTouchId){
+      log('⚠️  PUMP touchend with wrong ID (expected=' + pumpTouchId + ', got=' + touchId + ')', 'warn');
       return;
     }
     pumpPressed = false;
-    log('👆 PUMP touchend (pressed=' + pumpPressed + ')', 'info');
+    pumpTouchId = null;
+    log('👆 PUMP touchend (pressed=' + pumpPressed + ', id=' + touchId + ')', 'info');
     if(action===1){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -453,8 +488,9 @@
   }, {passive: false});
   
   pumpBtn.addEventListener('touchcancel', (e)=>{
-    log('❌ PUMP touchcancel', 'warn');
+    log('❌ PUMP touchcancel (id=' + e.changedTouches[0].identifier + ')', 'warn');
     pumpPressed = false;
+    pumpTouchId = null;
     if(action===1){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -466,7 +502,8 @@
     e.preventDefault();
     e.stopPropagation();
     dumpPressed = true;
-    log('👇 DUMP touchstart (pressed=' + dumpPressed + ')', 'info');
+    dumpTouchId = e.changedTouches[0].identifier;
+    log('👇 DUMP touchstart (pressed=' + dumpPressed + ', id=' + dumpTouchId + ')', 'info');
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(2); 
       pageStart=Date.now(); 
@@ -477,15 +514,29 @@
     }
   }, {passive: false});
   
+  dumpBtn.addEventListener('touchmove', (e)=>{
+    e.preventDefault(); // Prevent scrolling while holding
+    e.stopPropagation();
+    if(dumpPressed){
+      log('👉 DUMP touchmove (still holding, id=' + e.changedTouches[0].identifier + ')', 'info');
+    }
+  }, {passive: false});
+  
   dumpBtn.addEventListener('touchend', (e)=>{
     e.preventDefault();
     e.stopPropagation();
+    const touchId = e.changedTouches[0].identifier;
     if(!dumpPressed) {
-      log('⚠️  DUMP touchend without touchstart - ignoring', 'warn');
+      log('⚠️  DUMP touchend without touchstart - ignoring (id=' + touchId + ')', 'warn');
+      return;
+    }
+    if(touchId !== dumpTouchId){
+      log('⚠️  DUMP touchend with wrong ID (expected=' + dumpTouchId + ', got=' + touchId + ')', 'warn');
       return;
     }
     dumpPressed = false;
-    log('👆 DUMP touchend (pressed=' + dumpPressed + ')', 'info');
+    dumpTouchId = null;
+    log('👆 DUMP touchend (pressed=' + dumpPressed + ', id=' + touchId + ')', 'info');
     if(action===2){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -496,8 +547,9 @@
   }, {passive: false});
   
   dumpBtn.addEventListener('touchcancel', (e)=>{
-    log('❌ DUMP touchcancel', 'warn');
+    log('❌ DUMP touchcancel (id=' + e.changedTouches[0].identifier + ')', 'warn');
     dumpPressed = false;
+    dumpTouchId = null;
     if(action===2){ 
       stopHeartbeat(); 
       setAction(0); 
