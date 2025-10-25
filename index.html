@@ -246,7 +246,7 @@
       });
       
       log('✅ BLE connected successfully!', 'info');
-      await bleSend('S:0');
+      // Removed auto-select MAIN function
       
     }catch(e){
       log('❌ BLE connect failed: ' + (e.message||e), 'err');
@@ -387,10 +387,12 @@
     
     log(`🟢 Starting heartbeat: ${which===1?'PUMP':'DUMP'}`, 'info');
     
+    // Fire initial command (don't await)
     bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
     
     hbTimer=setInterval(()=>{ 
       if(BLE.connected){
+        // CRITICAL: Don't await! Fire and forget for true 40ms timing
         bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
       } else {
         log('⚠️  Heartbeat stopped: BLE disconnected', 'warn');
@@ -398,23 +400,30 @@
       }
     }, HEARTBEAT_MS); 
     
-    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz`, 'info');
+    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz (fire-and-forget)`, 'info');
   }
   
   function stopHeartbeat(){ 
     if(hbTimer){ 
       clearInterval(hbTimer); 
       hbTimer=null; 
+      const stack = new Error().stack;
       log('🛑 Heartbeat stopped', 'info');
+      log('📍 Called from: ' + (stack ? stack.split('\n')[2] : 'unknown'), 'info');
     } 
   }
 
   // ===== BUTTON HANDLERS (Simple pointerdown/pointerup) =====
   
+  let pumpPressed = false;
+  let dumpPressed = false;
+  
   // PUMP Button
   pumpBtn.addEventListener('pointerdown', (e)=>{
     e.preventDefault();
-    log('👇 PUMP button DOWN', 'info');
+    e.stopPropagation();
+    pumpPressed = true;
+    log('👇 PUMP button DOWN (pressed=' + pumpPressed + ')', 'info');
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(1); 
       pageStart=Date.now(); 
@@ -427,7 +436,13 @@
   
   pumpBtn.addEventListener('pointerup', (e)=>{
     e.preventDefault();
-    log('👆 PUMP button UP', 'info');
+    e.stopPropagation();
+    if(!pumpPressed) {
+      log('⚠️  PUMP UP without DOWN - ignoring', 'warn');
+      return;
+    }
+    pumpPressed = false;
+    log('👆 PUMP button UP (pressed=' + pumpPressed + ')', 'info');
     if(action===1){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -439,6 +454,7 @@
   
   pumpBtn.addEventListener('pointercancel', (e)=>{
     log('❌ PUMP button CANCEL', 'warn');
+    pumpPressed = false;
     if(action===1){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -448,7 +464,9 @@
   // DUMP Button
   dumpBtn.addEventListener('pointerdown', (e)=>{
     e.preventDefault();
-    log('👇 DUMP button DOWN', 'info');
+    e.stopPropagation();
+    dumpPressed = true;
+    log('👇 DUMP button DOWN (pressed=' + dumpPressed + ')', 'info');
     if(selectedFunction!==-1 || functionModeOn){ 
       setAction(2); 
       pageStart=Date.now(); 
@@ -461,7 +479,13 @@
   
   dumpBtn.addEventListener('pointerup', (e)=>{
     e.preventDefault();
-    log('👆 DUMP button UP', 'info');
+    e.stopPropagation();
+    if(!dumpPressed) {
+      log('⚠️  DUMP UP without DOWN - ignoring', 'warn');
+      return;
+    }
+    dumpPressed = false;
+    log('👆 DUMP button UP (pressed=' + dumpPressed + ')', 'info');
     if(action===2){ 
       stopHeartbeat(); 
       setAction(0); 
@@ -473,6 +497,7 @@
   
   dumpBtn.addEventListener('pointercancel', (e)=>{
     log('❌ DUMP button CANCEL', 'warn');
+    dumpPressed = false;
     if(action===2){ 
       stopHeartbeat(); 
       setAction(0); 
