@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Hydraulics Remote – BLE (ULTRA AGGRESSIVE)</title>
+<title>Hydraulics Remote – BLE (FIXED HOLD)</title>
 <style>
   :root{
     --bg:#0b0f14; --panel:#111823; --muted:#6b7a90; --accent:#3da9fc; --ring:#1f2a3a; --text:#e5e7eb; --white:#fff;
@@ -88,7 +88,7 @@
 <body>
   <div class="app">
     <div class="header">
-      <div class="title" id="title">Hydraulics Remote (AGGRESSIVE)</div>
+      <div class="title" id="title">Hydraulics Remote</div>
       <button id="bleConnectBtn" class="btn">Connect ᛒ</button>
       <button id="bleDisconnectBtn" class="btn disconnect" style="display:none;">Disconnect</button>
     </div>
@@ -160,7 +160,7 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=40;  // ULTRA AGGRESSIVE: Flood every 40ms with DOUBLE sends
+  const HEARTBEAT_MS=40;  // ALIGNED: sync with TX(40ms) and RX(80ms timeout)
   let pageStart=0; 
   let hbTimer=null; 
 
@@ -317,12 +317,12 @@
         await BLE.cmd.writeValueWithResponse(value);
       }
       // Only log non-heartbeat commands to reduce spam
-      if(!line.includes('S:10') && !line.includes('S:11') && !line.includes('S:12')){
+      if(!line.includes('S:10') && !line.includes('S:11')){
         log('TX: ' + line, 'tx');
       }
     }catch(e){
       // Don't spam errors for heartbeat failures
-      if(!line.includes('S:10') && !line.includes('S:11') && !line.includes('S:12')){
+      if(!line.includes('S:10') && !line.includes('S:11')){
         log('❌ WRITE ERR: ' + (e.message||e), 'err');
       }
     }
@@ -397,7 +397,7 @@
     document.getElementById('dumpSlide').classList.toggle('active',action===2); 
   }
 
-  // ===== ULTRA AGGRESSIVE Heartbeat =====
+  // ===== FIXED Heartbeat for pump/dump =====
   function startHeartbeat(which){ 
     stopHeartbeat(); 
     const funcId = functionModeOn ? 9 : selectedFunction;
@@ -406,27 +406,22 @@
       return;
     }
     
-    log(`🟢 Starting AGGRESSIVE heartbeat: ${which===1?'PUMP':'DUMP'}`, 'info');
+    log(`🟢 Starting heartbeat: ${which===1?'PUMP':'DUMP'}`, 'info');
     
-    // Send DOUBLE initial commands
-    const cmd = `S:${which===1?'10':'11'},F:${funcId}`;
-    bleSend(cmd);
-    setTimeout(()=>bleSend(cmd), 10);
+    // Send initial command
+    bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
     
-    // Start interval with DOUBLE redundancy
+    // Start interval
     hbTimer=setInterval(()=>{ 
       if(BLE.connected){
-        const cmd = `S:${which===1?'10':'11'},F:${funcId}`;
-        // Send TWICE per cycle for redundancy
-        bleSend(cmd);
-        setTimeout(()=>bleSend(cmd), 10);
+        bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
       } else {
         log('⚠️  Heartbeat stopped: BLE disconnected', 'warn');
         stopHeartbeat();
       }
     }, HEARTBEAT_MS); 
     
-    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz (DOUBLE send)`, 'info');
+    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz`, 'info');
   }
   
   function stopHeartbeat(){ 
@@ -446,63 +441,82 @@
   function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
     let dragging=false, pointerId=null, rect=null, engaged=false, hasMoved=false;
     const restingPct=(direction==='right')?18:82; 
-    const engagePct=(direction==='right')?70:30; 
-    const minMovePct=18;
+    const engagePct=(direction==='right')?50:50;  // FIXED: Only need to reach 50% (easier!)
+    const minMovePct=10;  // FIXED: Less movement needed to count (was 18)
     
     const pctFromX=(cx)=>{ 
       const p=(cx - rect.left)/rect.width; 
       return Math.min(Math.max(p*100, 0), 100); 
     };
-    const updateThumb=(pct)=>{ thumbEl.style.left=pct+'%'; };
     
-    function onPointerDown(e){
-      dragging=true;
-      pointerId=e.pointerId;
-      rect=trackEl.getBoundingClientRect();
-      hasMoved=false;
-      engaged=false;
-      try{ trackEl.setPointerCapture(pointerId); }catch(_){}
-      thumbEl.classList.add('active');
+    const updateThumb=(pct)=>{ 
+      thumbEl.style.left=`${pct}%`; 
+    };
+    
+    function onPointerDown(e){ 
+      log(`👇 Pointer down on ${direction} slider`, 'info');
+      dragging=true; 
+      hasMoved=false; 
+      engaged=false; 
+      pointerId=e.pointerId; 
+      rect=trackEl.getBoundingClientRect(); 
+      try{ trackEl.setPointerCapture(pointerId); }catch(_){} 
     }
     
-    function onPointerMove(e){
-      if(!dragging || e.pointerId!==pointerId) return;
-      e.preventDefault();
-      const pct=pctFromX(e.clientX);
-      updateThumb(pct);
+    function onPointerMove(e){ 
+      if(!dragging || e.pointerId!==pointerId) return; 
       
-      const dist=(direction==='right')? (pct - restingPct) : (restingPct - pct);
-      if(dist >= minMovePct){
-        hasMoved=true;
-      }
+      const pct=pctFromX(e.clientX); 
+      updateThumb(pct); 
       
-      const cond=(direction==='right' && pct>=engagePct)||(direction==='left' && pct<=engagePct);
+      const dist=(direction==='right')? (pct - restingPct) : (restingPct - pct); 
+      if(dist >= minMovePct){ 
+        hasMoved=true; 
+      } 
+      
+      const cond=(direction==='right' && pct>=engagePct)||(direction==='left' && pct<=engagePct); 
       
       // Engage when entering zone
-      if(cond && hasMoved && !engaged){
-        engaged=true;
-        thumbEl.classList.add('active');
-        log(`✅ ENGAGED ${direction} slider`, 'info');
-        onEngage();
-        haptic('medium');
+      if(cond && hasMoved && !engaged){ 
+        engaged=true; 
+        thumbEl.classList.add('active'); 
+        log(`✅ ENGAGED ${direction} slider at ${pct.toFixed(1)}%`, 'info');
+        onEngage(); 
+        haptic('medium'); 
+      } 
+      // FIXED: Only disengage if moved WAY back (not just slightly)
+      const disengageThreshold = (direction==='right') ? 40 : 60;
+      const shouldDisengage = (direction==='right' && pct < disengageThreshold) || 
+                              (direction==='left' && pct > disengageThreshold);
+      
+      if(shouldDisengage && engaged){
+        engaged=false; 
+        thumbEl.classList.remove('active'); 
+        log(`⬅️  DISENGAGED ${direction} slider at ${pct.toFixed(1)}%`, 'info');
+        onRelease(false); 
       }
-      // NO mid-drag disengagement - stays engaged until release
+      
+      // Log position while engaged for debugging
+      if(engaged && cond){
+        log(`⏳ Holding at ${pct.toFixed(1)}% (engaged)`, 'info');
+      }
     }
     
-    function onPointerUp(e){
-      if(!dragging || e.pointerId!==pointerId) return;
+    function onPointerUp(e){ 
+      if(!dragging || e.pointerId!==pointerId) return; 
       
-      log(`👆 Pointer up on ${direction} slider - engaged=${engaged}`, 'info');
+      const currentPct = pctFromX(e.clientX);
+      log(`👆 Pointer up at ${currentPct.toFixed(1)}% - engaged=${engaged}`, 'info');
       
-      dragging=false;
-      try{ trackEl.releasePointerCapture(pointerId); }catch(_){}
-      updateThumb(restingPct);
-      thumbEl.classList.remove('active');
+      dragging=false; 
+      try{ trackEl.releasePointerCapture(pointerId); }catch(_){} 
+      updateThumb(restingPct); 
+      thumbEl.classList.remove('active'); 
       
-      if(engaged){
-        onRelease(true);
-        engaged=false;
-        haptic('light');
+      if(engaged){ 
+        onRelease(true); 
+        engaged=false; 
+        haptic('light'); 
       }
       
       hasMoved=false;
@@ -518,26 +532,22 @@
 
   // Pump: slide RIGHT to engage
   wireSlider(pumpTrack, pumpThumb, 'right',
-    ()=>{
-      if(selectedFunction!==-1 || functionModeOn){
-        setAction(1);
-        pageStart=Date.now();
+    ()=>{ 
+      if(selectedFunction!==-1 || functionModeOn){ 
+        setAction(1); 
+        pageStart=Date.now(); 
         startHeartbeat(1);
       } else {
         log('⚠️  Select a function first!', 'warn');
       }
     },
-    (finalize)=>{
-      if(action===1){
-        stopHeartbeat();
-        setAction(0);
+    (finalize)=>{ 
+      if(action===1){ 
+        stopHeartbeat(); 
+        setAction(0); 
         if(finalize){
           const funcId = functionModeOn ? 9 : selectedFunction;
-          if(funcId !== -1) {
-            // Send IDLE multiple times
-            bleSend(`S:12,F:${funcId}`);
-            setTimeout(()=>bleSend(`S:12,F:${funcId}`), 10);
-          }
+          if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
         }
       }
     }
@@ -545,37 +555,33 @@
 
   // Dump: slide LEFT to engage
   wireSlider(dumpTrack, dumpThumb, 'left',
-    ()=>{
-      if(selectedFunction!==-1 || functionModeOn){
-        setAction(2);
-        pageStart=Date.now();
+    ()=>{ 
+      if(selectedFunction!==-1 || functionModeOn){ 
+        setAction(2); 
+        pageStart=Date.now(); 
         startHeartbeat(2);
       } else {
         log('⚠️  Select a function first!', 'warn');
       }
     },
-    (finalize)=>{
-      if(action===2){
-        stopHeartbeat();
-        setAction(0);
+    (finalize)=>{ 
+      if(action===2){ 
+        stopHeartbeat(); 
+        setAction(0); 
         if(finalize){
           const funcId = functionModeOn ? 9 : selectedFunction;
-          if(funcId !== -1) {
-            // Send IDLE multiple times
-            bleSend(`S:12,F:${funcId}`);
-            setTimeout(()=>bleSend(`S:12,F:${funcId}`), 10);
-          }
+          if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
         }
       }
     }
   );
 
   // ===== Function Mode toggle =====
-  fnSwitch.addEventListener('click', async ()=>{
-    functionModeOn=!functionModeOn;
-    fnSwitch.classList.toggle('on',functionModeOn);
-    fnSwitch.setAttribute('aria-checked', functionModeOn? 'true':'false');
-    toggleWrap.classList.toggle('on',functionModeOn);
+  fnSwitch.addEventListener('click', async ()=>{ 
+    functionModeOn=!functionModeOn; 
+    fnSwitch.classList.toggle('on',functionModeOn); 
+    fnSwitch.setAttribute('aria-checked', functionModeOn? 'true':'false'); 
+    toggleWrap.classList.toggle('on',functionModeOn); 
     renderAction();
     
     if(functionModeOn){
@@ -592,73 +598,73 @@
   });
 
   // ===== Countdown & timer =====
-  function updateTimers(resetToFive){
-    [...fnGrid.children].forEach((el,i)=>{
-      const t=el.querySelector('[data-role="timer"]');
-      if(!t) return;
-      if(resetToFive || i!==selectedFunction){
-        t.textContent='5s';
-      }
-    });
+  function updateTimers(resetToFive){ 
+    [...fnGrid.children].forEach((el,i)=>{ 
+      const t=el.querySelector('[data-role="timer"]'); 
+      if(!t) return; 
+      if(resetToFive || i!==selectedFunction){ 
+        t.textContent='5s'; 
+      } 
+    }); 
   }
   
-  function renderCountdown(){
-    if(selectedFunction===-1){
-      countEl.textContent='—';
-      return;
-    }
-    const elapsed=Date.now()-pageStart;
-    const remainingMs=Math.max(0, FUNCTION_ACTIVE_TIME - elapsed);
-    const secs=Math.ceil(remainingMs/1000);
-    countEl.textContent=`${secs}s`;
+  function renderCountdown(){ 
+    if(selectedFunction===-1){ 
+      countEl.textContent='—'; 
+      return; 
+    } 
+    const elapsed=Date.now()-pageStart; 
+    const remainingMs=Math.max(0, FUNCTION_ACTIVE_TIME - elapsed); 
+    const secs=Math.ceil(remainingMs/1000); 
+    countEl.textContent=`${secs}s`; 
     
-    const card=fnGrid.children[selectedFunction];
-    if(card){
-      const t=card.querySelector('[data-role="timer"]');
-      if(t) t.textContent=`${secs}s`;
-    }
+    const card=fnGrid.children[selectedFunction]; 
+    if(card){ 
+      const t=card.querySelector('[data-role="timer"]'); 
+      if(t) t.textContent=`${secs}s`; 
+    } 
     
-    if(remainingMs===0){
-      stopHeartbeat();
-      action=0;
-      const prev=selectedFunction;
-      selectedFunction=-1;
-      renderGrid();
-      renderAction();
-      updateTimers(true);
-      bleSend(`S:12,F:${prev}`);
+    if(remainingMs===0){ 
+      stopHeartbeat(); 
+      action=0; 
+      const prev=selectedFunction; 
+      selectedFunction=-1; 
+      renderGrid(); 
+      renderAction(); 
+      updateTimers(true); 
+      bleSend(`S:12,F:${prev}`); 
       log('⏱️  Function timeout - auto-deselected', 'info');
-    }
+    } 
   }
 
   // ===== Drawer toggle =====
-  let drawerOpen=false;
-  const setDrawer=(open)=>{
-    drawerOpen=open;
-    drawer.classList.toggle('open',open);
-    drawerToggle.textContent=open? '▼ Hide Log':'▲ Show Log';
+  let drawerOpen=false; 
+  const setDrawer=(open)=>{ 
+    drawerOpen=open; 
+    drawer.classList.toggle('open',open); 
+    drawerToggle.textContent=open? '▼ Hide Log':'▲ Show Log'; 
   };
   drawerToggle.addEventListener('click',()=> setDrawer(!drawerOpen));
   
-  let pressTimer=null;
-  title.addEventListener('mousedown',()=>{ pressTimer=setTimeout(()=>setDrawer(!drawerOpen),650); });
-  title.addEventListener('mouseup',()=> clearTimeout(pressTimer));
-  title.addEventListener('mouseleave',()=> clearTimeout(pressTimer));
-  title.addEventListener('touchstart',()=>{ pressTimer=setTimeout(()=>setDrawer(!drawerOpen),650); }, {passive:true});
+  let pressTimer=null; 
+  title.addEventListener('mousedown',()=>{ pressTimer=setTimeout(()=>setDrawer(!drawerOpen),650); }); 
+  title.addEventListener('mouseup',()=> clearTimeout(pressTimer)); 
+  title.addEventListener('mouseleave',()=> clearTimeout(pressTimer)); 
+  title.addEventListener('touchstart',()=>{ pressTimer=setTimeout(()=>setDrawer(!drawerOpen),650); }, {passive:true}); 
   title.addEventListener('touchend',()=> clearTimeout(pressTimer));
 
   // ===== Init =====
-  (function init(){
-    renderGrid();
-    renderAction();
+  (function init(){ 
+    renderGrid(); 
+    renderAction(); 
     setDrawer(true); // Open by default to see logs
-    pumpThumb.style.left='18%';
-    dumpThumb.style.left='82%';
+    pumpThumb.style.left='18%'; 
+    dumpThumb.style.left='82%'; 
     setInterval(renderCountdown, 150);
     
-    log('🚀 ULTRA AGGRESSIVE mode initialized', 'info');
-    log('⚡ Commands flood every 40ms with DOUBLE send', 'info');
-    log('📝 Watch log to verify continuous flow', 'info');
+    log('🚀 Web app initialized', 'info');
+    log('⚡ Tap title for 650ms to toggle log', 'info');
+    log('📝 Watch this log to see heartbeat activity', 'info');
     
     bleConnectBtn.addEventListener('click', bleConnect);
     bleDisconnectBtn.addEventListener('click', bleDisconnect);
