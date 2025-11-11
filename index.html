@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Hydraulics Remote – BUTTON TEST</title>
+<title>Hydraulics Remote</title>
 <style>
   :root{
     --bg:#0b0f14; --panel:#111823; --muted:#6b7a90; --accent:#3da9fc; --ring:#1f2a3a; --text:#e5e7eb; --white:#fff;
@@ -23,10 +23,11 @@
   .btn:disabled{opacity:.6; cursor:not-allowed}
   .btn.connected{background:#22c55e; color:#0b0f14; border-color:#22c55e;}
   .btn.disconnect{background:#ef4444; color:#fff; border-color:#ef4444;}
+  .btn.lora{background:#ef4444; color:#fff; border-color:#ef4444; width:100%; padding:12px;}
 
   .card{background:var(--panel); border:1px solid var(--ring); border-radius:14px; padding:10px; box-shadow:0 6px 24px rgba(0,0,0,.25);}  
 
-  /* Function grid */
+  /* ===== Function grid ===== */
   .fn-grid{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
   .fn{ position:relative; border:1px solid var(--ring); border-radius:12px; min-height:76px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.06)); cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; transition:transform .06s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease, color .12s ease; text-align:center; padding:8px; }
   .fn:hover{ transform:translateY(-1px); }
@@ -37,41 +38,27 @@
   .fn.selected .fn-name{ color:#0b0f14; }
   .fn.selected .fn-timer{ opacity:1; color:#05263a; }
 
-  /* Action status */
+  /* ===== Action & status ===== */
   .action-top{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;}
   .armed{font-weight:700; letter-spacing:.4px; color:var(--text); font-size:clamp(.9rem,2.6vw,1rem);}  
   .armed.pumping{ color:var(--green); }
   .armed.dumping{ color:var(--red); }
   .count{font-variant-numeric:tabular-nums; color:var(--muted); font-size:clamp(.8rem,2.4vw,.95rem);}  
 
-  /* BUTTONS instead of sliders */
-  .action-buttons{display:flex; gap:10px; margin-top:8px;}
-  .action-btn{
-    flex:1; 
-    min-height:80px; 
-    border:2px solid var(--ring); 
-    border-radius:12px; 
-    background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); 
-    cursor:pointer; 
-    user-select:none; 
-    display:flex; 
-    align-items:center; 
-    justify-content:center; 
-    font-weight:700; 
-    font-size:1.2rem; 
-    transition:all .15s ease; 
-    -webkit-tap-highlight-color:transparent;
-    touch-action:manipulation; /* Prevent browser gestures but allow tap */
-    -webkit-user-select:none;
-    -webkit-touch-callout:none;
-  }
-  .action-btn:active{transform:scale(0.97);}
-  .action-btn.pump{color:#22c55e; border-color:rgba(34,197,94,.3);}
-  .action-btn.pump.active{background:rgba(34,197,94,.25); border-color:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.2) inset;}
-  .action-btn.dump{color:#ef4444; border-color:rgba(239,68,68,.3);}
-  .action-btn.dump.active{background:rgba(239,68,68,.25); border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.2) inset;}
+  /* ===== Pump/Dump sliders (pointer events) ===== */
+  .slides{display:flex; gap:10px;}
+  .slide{ flex:1; border:1px solid var(--ring); border-radius:12px; padding:10px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.08)); display:flex; flex-direction:column; gap:8px; }
+  .slide .label{ text-align:center; font-weight:700; font-size:clamp(.95rem,2.5vw,1.05rem); color:#fff; }
+  .track{ position:relative; height:56px; border-radius:12px; border:1px solid var(--ring); overflow:hidden; background:rgba(255,255,255,.02); touch-action:none; }
+  .thumb{ position:absolute; top:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:999px; background:#e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 24px rgba(0,0,0,.25); touch-action:none; }
+  .slide.pump .track{ background:linear-gradient(90deg, rgba(34,197,94,.12), rgba(255,255,255,0)); }
+  .slide.pump.active .track{ box-shadow:0 0 0 2px var(--green-weak) inset; border-color:rgba(34,197,94,.45); }
+  .slide.pump .thumb.active{ outline:2px solid var(--green); }
+  .slide.dump .track{ background:linear-gradient(270deg, rgba(239,68,68,.12), rgba(255,255,255,0)); }
+  .slide.dump.active .track{ box-shadow:0 0 0 2px var(--red-weak) inset; border-color:rgba(239,68,68,.45); }
+  .slide.dump .thumb.active{ outline:2px solid var(--red); }
 
-  /* Function Mode toggle */
+  /* ===== Function Mode toggle ===== */
   .toggle-wrap{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:10px; padding:10px; border:1px solid var(--ring); border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.06)); transition:background .15s ease, border-color .15s ease, box-shadow .15s ease; }
   .toggle-wrap.on{ background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.45); box-shadow:0 0 0 2px var(--green-weak) inset; }
   .toggle-label{ color:var(--text); font-weight:600; font-size:clamp(.95rem,2.6vw,1rem);}  
@@ -80,7 +67,7 @@
   .switch.on{ background:rgba(34,197,94,.25); border-color:rgba(34,197,94,.5); box-shadow:0 0 0 2px var(--green-weak) inset; }
   .switch.on::after{ transform:translate(22px, -50%); background:#dcfce7; }
 
-  /* Log drawer */
+  /* ===== Bottom log drawer ===== */
   .drawer{ position:fixed; left:0; right:0; bottom:0; z-index:30; pointer-events:none; display:flex; justify-content:center; }
   .drawer-inner{ width:min(640px, 100%); pointer-events:auto; }
   .drawer-toggle{ width:100%; border:none; background:#0f1420; color:#9fb0d0; padding:8px 10px; cursor:pointer; border-top:1px solid var(--ring); border-left:1px solid var(--ring); border-right:1px solid var(--ring); border-top-left-radius:12px; border-top-right-radius:12px; font-weight:600; }
@@ -92,13 +79,15 @@
   .log-err{ color:#ff6b6b; }
   .log-warn{ color:#ffd43b; }
 
-  @media (max-width: 430px){ .app{padding:10px; gap:10px} .card{padding:10px} .fn{min-height:72px} }
+  /* Small phone tweaks */
+  @media (max-width: 430px){ .app{padding:10px; gap:10px} .card{padding:10px} .fn{min-height:72px} .track{height:52px} }
+  @media (max-height: 740px){ .fn{min-height:70px} .track{height:50px} }
 </style>
 </head>
 <body>
   <div class="app">
     <div class="header">
-      <div class="title" id="title">Hydraulics Remote (BUTTON TEST)</div>
+      <div class="title" id="title">Hydraulics Remote</div>
       <button id="bleConnectBtn" class="btn">Connect ᛒ</button>
       <button id="bleDisconnectBtn" class="btn disconnect" style="display:none;">Disconnect</button>
     </div>
@@ -109,17 +98,30 @@
       <div class="fn-grid" id="fnGrid"></div>
     </div>
 
-    <!-- ARMED + BUTTONS + Function Mode -->
+    <!-- ARMED + Sliders + Function Mode -->
     <div class="card">
       <div class="action-top">
         <div id="armedLabel" class="armed">READY</div>
         <div id="count" class="count">—</div>
       </div>
 
-      <!-- Simple hold-to-activate buttons -->
-      <div class="action-buttons">
-        <button class="action-btn pump" id="pumpBtn">PUMP</button>
-        <button class="action-btn dump" id="dumpBtn">DUMP</button>
+      <!-- Directional sliders -->
+      <div class="slides">
+        <!-- Pump: slide RIGHT to engage -->
+        <div class="slide pump" id="pumpSlide">
+          <div class="label">Slide to Pump →</div>
+          <div class="track" id="pumpTrack" data-dir="right">
+            <div class="thumb" id="pumpThumb" style="left:18%;"></div>
+          </div>
+        </div>
+
+        <!-- Dump: slide LEFT to engage -->
+        <div class="slide dump" id="dumpSlide">
+          <div class="label">← Slide to Dump</div>
+          <div class="track" id="dumpTrack" data-dir="left">
+            <div class="thumb" id="dumpThumb" style="left:82%;"></div>
+          </div>
+        </div>
       </div>
 
       <div id="toggleWrap" class="toggle-wrap" style="margin-top:12px;">
@@ -127,6 +129,9 @@
         <div id="fnSwitch" class="switch" role="switch" aria-checked="false"></div>
       </div>
     </div>
+
+    <!-- Switch to LoRa Button -->
+    <button id="loraBtn" class="btn lora">⚡ SWITCH TO LORA</button>
   </div>
 
   <!-- Bottom drawer -->
@@ -157,9 +162,9 @@
   const FUNCTIONS=["Mainsheet","Outhaul","Backstay","Vang","Cunningham","Furler","Jib Halyard","Jib Car","Inner Forestay"];
   let selectedFunction=-1, action=0, functionModeOn=false;
   const FUNCTION_ACTIVE_TIME=5000; 
-  const HEARTBEAT_MS=40;  // ALIGNED: sync with TX(40ms) and RX(80ms timeout)
+  const HEARTBEAT_MS=80;  // Fast heartbeat to prevent 200ms BLE timeout
   let pageStart=0; 
-  let hbTimer=null;
+  let hbTimer=null; 
 
   // ===== DOM =====
   const fnGrid=document.getElementById('fnGrid');
@@ -176,8 +181,7 @@
   const title=document.getElementById('title');
   const bleConnectBtn=document.getElementById('bleConnectBtn');
   const bleDisconnectBtn=document.getElementById('bleDisconnectBtn');
-  const pumpBtn=document.getElementById('pumpBtn');
-  const dumpBtn=document.getElementById('dumpBtn');
+  const loraBtn=document.getElementById('loraBtn');
 
   // ===== Logging =====
   function log(msg, type='info'){
@@ -260,11 +264,11 @@
         connEl.textContent='Disconnected ❌';
         bleConnectBtn.style.display = 'block';
         bleDisconnectBtn.style.display = 'none';
+        stopHeartbeat();
         log('❌ BLE disconnected', 'warn');
       });
       
       log('✅ BLE connected successfully!', 'info');
-      // Removed auto-select MAIN function
       
     }catch(e){
       log('❌ BLE connect failed: ' + (e.message||e), 'err');
@@ -379,7 +383,7 @@
     log(`🔵 Selected ${FUNCTIONS[idx]}`, 'info');
   });
 
-  // ===== Action rendering =====
+  // ===== Action rendering (NO "ARMED" text when functionModeOn) =====
   function setAction(newA){ 
     if(action===newA) return; 
     action=newA; 
@@ -387,11 +391,11 @@
   }
   
   function renderAction(){ 
-    const armed=(selectedFunction!==-1 || functionModeOn); 
-    armedLabel.textContent=(action===1)?'PUMP':(action===2)?'DUMP':(armed?'ARMED':'READY'); 
+    // Only show READY/PUMP/DUMP - never ARMED
+    armedLabel.textContent=(action===1)?'PUMP':(action===2)?'DUMP':'READY'; 
     armedLabel.className = 'armed' + (action===1?' pumping':action===2?' dumping':'');
-    pumpBtn.classList.toggle('active', action===1);
-    dumpBtn.classList.toggle('active', action===2);
+    document.getElementById('pumpSlide').classList.toggle('active',action===1); 
+    document.getElementById('dumpSlide').classList.toggle('active',action===2); 
   }
 
   // ===== Heartbeat =====
@@ -405,12 +409,12 @@
     
     log(`🟢 Starting heartbeat: ${which===1?'PUMP':'DUMP'}`, 'info');
     
-    // Fire initial command (don't await)
+    // Send initial command
     bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
     
+    // Start interval
     hbTimer=setInterval(()=>{ 
       if(BLE.connected){
-        // CRITICAL: Don't await! Fire and forget for true 40ms timing
         bleSend(`S:${which===1?'10':'11'},F:${funcId}`);
       } else {
         log('⚠️  Heartbeat stopped: BLE disconnected', 'warn');
@@ -418,176 +422,143 @@
       }
     }, HEARTBEAT_MS); 
     
-    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz (fire-and-forget)`, 'info');
+    log(`✅ Heartbeat running at ${1000/HEARTBEAT_MS}Hz`, 'info');
   }
   
   function stopHeartbeat(){ 
     if(hbTimer){ 
       clearInterval(hbTimer); 
       hbTimer=null; 
-      const stack = new Error().stack;
       log('🛑 Heartbeat stopped', 'info');
-      log('📍 Called from: ' + (stack ? stack.split('\n')[2] : 'unknown'), 'info');
     } 
   }
 
-  // ===== BUTTON HANDLERS (Dead man's switch - needs continuous touch) =====
-  
-  let pumpPressed = false;
-  let dumpPressed = false;
-  let pumpTouchId = null;
-  let dumpTouchId = null;
-  let pumpWatchdog = null;
-  let dumpWatchdog = null;
-  
-  const TOUCH_WATCHDOG_MS = 150; // If no touchmove for 150ms, release
-  
-  function stopPumpWatchdog(){
-    if(pumpWatchdog){
-      clearTimeout(pumpWatchdog);
-      pumpWatchdog = null;
-    }
-  }
-  
-  function stopDumpWatchdog(){
-    if(dumpWatchdog){
-      clearTimeout(dumpWatchdog);
-      dumpWatchdog = null;
-    }
-  }
-  
-  function pumpRelease(){
-    if(!pumpPressed) return;
-    pumpPressed = false;
-    pumpTouchId = null;
-    stopPumpWatchdog();
-    log('👆 PUMP RELEASE', 'info');
-    if(action===1){ 
-      stopHeartbeat(); 
-      setAction(0); 
-      const funcId = functionModeOn ? 9 : selectedFunction;
-      if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
-      haptic('light');
-    }
-  }
-  
-  function dumpRelease(){
-    if(!dumpPressed) return;
-    dumpPressed = false;
-    dumpTouchId = null;
-    stopDumpWatchdog();
-    log('👆 DUMP RELEASE', 'info');
-    if(action===2){ 
-      stopHeartbeat(); 
-      setAction(0); 
-      const funcId = functionModeOn ? 9 : selectedFunction;
-      if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
-      haptic('light');
-    }
-  }
-  
-  // PUMP Button - Dead man's switch approach
-  pumpBtn.addEventListener('touchstart', (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    pumpPressed = true;
-    pumpTouchId = e.changedTouches[0].identifier;
-    log('👇 PUMP touchstart (id=' + pumpTouchId + ')', 'info');
-    
-    // Start watchdog
-    stopPumpWatchdog();
-    pumpWatchdog = setTimeout(()=>{
-      log('⏱️  PUMP watchdog timeout - no touchmove', 'warn');
-      pumpRelease();
-    }, TOUCH_WATCHDOG_MS);
-    
-    if(selectedFunction!==-1 || functionModeOn){ 
-      setAction(1); 
-      pageStart=Date.now(); 
-      startHeartbeat(1);
-      haptic('medium');
-    } else {
-      log('⚠️  Select a function first!', 'warn');
-    }
-  }, {passive: false});
-  
-  pumpBtn.addEventListener('touchmove', (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    if(!pumpPressed) return;
-    
-    // Reset watchdog - we got movement, finger is still down!
-    stopPumpWatchdog();
-    pumpWatchdog = setTimeout(()=>{
-      log('⏱️  PUMP watchdog timeout - movement stopped', 'warn');
-      pumpRelease();
-    }, TOUCH_WATCHDOG_MS);
-  }, {passive: false});
-  
-  pumpBtn.addEventListener('touchend', (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    const touchId = e.changedTouches[0].identifier;
-    log('ℹ️  PUMP touchend (id=' + touchId + ') - ignoring, using watchdog instead', 'info');
-    // DON'T release here - touchend is buggy on mobile!
-    // Let the watchdog handle it (no more touchmove = release)
-  }, {passive: false});
-  
-  pumpBtn.addEventListener('touchcancel', (e)=>{
-    log('❌ PUMP touchcancel', 'warn');
-    pumpRelease();
-  }, {passive: false});
+  // ===== Pump/Dump sliders with directional engagement =====
+  const pumpTrack=document.getElementById('pumpTrack');
+  const dumpTrack=document.getElementById('dumpTrack');
+  const pumpThumb=document.getElementById('pumpThumb');
+  const dumpThumb=document.getElementById('dumpThumb');
 
-  // DUMP Button - Dead man's switch approach
-  dumpBtn.addEventListener('touchstart', (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    dumpPressed = true;
-    dumpTouchId = e.changedTouches[0].identifier;
-    log('👇 DUMP touchstart (id=' + dumpTouchId + ')', 'info');
+  function wireSlider(trackEl, thumbEl, direction, onEngage, onRelease){
+    let dragging=false, pointerId=null, rect=null, engaged=false, hasMoved=false;
+    const restingPct=(direction==='right')?18:82; 
+    const engagePct=(direction==='right')?70:30; 
+    const minMovePct=18;
     
-    // Start watchdog
-    stopDumpWatchdog();
-    dumpWatchdog = setTimeout(()=>{
-      log('⏱️  DUMP watchdog timeout - no touchmove', 'warn');
-      dumpRelease();
-    }, TOUCH_WATCHDOG_MS);
+    const pctFromX=(cx)=>{ 
+      const p=(cx - rect.left)/rect.width; 
+      return Math.min(Math.max(p*100, 0), 100); 
+    };
     
-    if(selectedFunction!==-1 || functionModeOn){ 
-      setAction(2); 
-      pageStart=Date.now(); 
-      startHeartbeat(2);
-      haptic('medium');
-    } else {
-      log('⚠️  Select a function first!', 'warn');
+    const updateThumb=(pct)=>{ 
+      thumbEl.style.left=`${pct}%`; 
+    };
+    
+    function onPointerDown(e){ 
+      log(`👇 Pointer down on ${direction} slider`, 'info');
+      dragging=true; 
+      hasMoved=false; 
+      engaged=false; 
+      pointerId=e.pointerId; 
+      rect=trackEl.getBoundingClientRect(); 
+      try{ trackEl.setPointerCapture(pointerId); }catch(_){} 
     }
-  }, {passive: false});
-  
-  dumpBtn.addEventListener('touchmove', (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    if(!dumpPressed) return;
     
-    // Reset watchdog - we got movement, finger is still down!
-    stopDumpWatchdog();
-    dumpWatchdog = setTimeout(()=>{
-      log('⏱️  DUMP watchdog timeout - movement stopped', 'warn');
-      dumpRelease();
-    }, TOUCH_WATCHDOG_MS);
-  }, {passive: false});
-  
-  dumpBtn.addEventListener('touchend', (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    const touchId = e.changedTouches[0].identifier;
-    log('ℹ️  DUMP touchend (id=' + touchId + ') - ignoring, using watchdog instead', 'info');
-    // DON'T release here - touchend is buggy on mobile!
-  }, {passive: false});
-  
-  dumpBtn.addEventListener('touchcancel', (e)=>{
-    log('❌ DUMP touchcancel', 'warn');
-    dumpRelease();
-  }, {passive: false});
+    function onPointerMove(e){ 
+      if(!dragging || e.pointerId!==pointerId) return; 
+      
+      const pct=pctFromX(e.clientX); 
+      updateThumb(pct); 
+      
+      const dist=(direction==='right')? (pct - restingPct) : (restingPct - pct); 
+      if(dist >= minMovePct){ 
+        hasMoved=true; 
+      } 
+      
+      const cond=(direction==='right' && pct>=engagePct)||(direction==='left' && pct<=engagePct); 
+      
+      // Engage when entering zone
+      if(cond && hasMoved && !engaged){ 
+        engaged=true; 
+        thumbEl.classList.add('active'); 
+        log(`✅ ENGAGED ${direction} slider`, 'info');
+        onEngage(); 
+        haptic('medium'); 
+      } 
+    }
+    
+    function onPointerUp(e){ 
+      if(!dragging || e.pointerId!==pointerId) return; 
+      
+      log(`👆 Pointer up on ${direction} slider - engaged=${engaged}`, 'info');
+      
+      dragging=false; 
+      try{ trackEl.releasePointerCapture(pointerId); }catch(_){} 
+      updateThumb(restingPct); 
+      thumbEl.classList.remove('active'); 
+      
+      if(engaged){ 
+        onRelease(true); 
+        engaged=false; 
+        haptic('light'); 
+      }
+      
+      hasMoved=false;
+      engaged=false;
+    }
+
+    trackEl.addEventListener('pointerdown', onPointerDown);
+    trackEl.addEventListener('pointermove', onPointerMove);
+    trackEl.addEventListener('pointerup', onPointerUp);
+    trackEl.addEventListener('pointercancel', onPointerUp);
+    thumbEl.addEventListener('pointerdown', onPointerDown);
+  }
+
+  // Pump: slide RIGHT to engage
+  wireSlider(pumpTrack, pumpThumb, 'right',
+    ()=>{ 
+      if(selectedFunction!==-1 || functionModeOn){ 
+        setAction(1); 
+        pageStart=Date.now(); 
+        startHeartbeat(1);
+      } else {
+        log('⚠️  Select a function first!', 'warn');
+      }
+    },
+    (finalize)=>{ 
+      if(action===1){ 
+        stopHeartbeat(); 
+        setAction(0); 
+        if(finalize){
+          const funcId = functionModeOn ? 9 : selectedFunction;
+          if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
+        }
+      }
+    }
+  );
+
+  // Dump: slide LEFT to engage
+  wireSlider(dumpTrack, dumpThumb, 'left',
+    ()=>{ 
+      if(selectedFunction!==-1 || functionModeOn){ 
+        setAction(2); 
+        pageStart=Date.now(); 
+        startHeartbeat(2);
+      } else {
+        log('⚠️  Select a function first!', 'warn');
+      }
+    },
+    (finalize)=>{ 
+      if(action===2){ 
+        stopHeartbeat(); 
+        setAction(0); 
+        if(finalize){
+          const funcId = functionModeOn ? 9 : selectedFunction;
+          if(funcId !== -1) bleSend(`S:12,F:${funcId}`);
+        }
+      }
+    }
+  );
 
   // ===== Function Mode toggle =====
   fnSwitch.addEventListener('click', async ()=>{ 
@@ -608,6 +579,15 @@
       haptic('light');
       log('⚫ Function mode OFF', 'info');
     }
+  });
+
+  // ===== Switch to LoRa =====
+  loraBtn.addEventListener('click', async ()=>{
+    log('⚡ Switching to LoRa mode...', 'info');
+    await bleSend('S:15');
+    await new Promise(r=>setTimeout(r, 200));
+    bleDisconnect();
+    haptic('heavy');
   });
 
   // ===== Countdown & timer =====
@@ -670,13 +650,14 @@
   (function init(){ 
     renderGrid(); 
     renderAction(); 
-    setDrawer(true); // Open log by default for debugging
+    setDrawer(true); // Open by default
+    pumpThumb.style.left='18%'; 
+    dumpThumb.style.left='82%'; 
     setInterval(renderCountdown, 150);
     
-    log('🚀 Web app initialized (BUTTON TEST)', 'info');
-    log('📝 Simple pointerdown/pointerup test', 'info');
-    log('🔍 If buttons work but sliders dont = slider issue', 'info');
-    log('🔍 If buttons also fail = heartbeat/timing issue', 'info');
+    log('🚀 Hydraulics Remote initialized', 'info');
+    log('⚡ Heartbeat: ' + HEARTBEAT_MS + 'ms', 'info');
+    log('📱 Connect to HydraulicsRX to begin', 'info');
     
     bleConnectBtn.addEventListener('click', bleConnect);
     bleDisconnectBtn.addEventListener('click', bleDisconnect);
